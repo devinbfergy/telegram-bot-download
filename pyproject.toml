@@ -8,3 +8,8 @@ dependencies = [
     "python-telegram-bot>=22.1",
     "yt-dlp[default]>=2025.6.9",
 ]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.12.0",
+]
