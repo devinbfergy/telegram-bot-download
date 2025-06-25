@@ -121,14 +121,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         if is_video_url(url):
             # Send an initial confirmation message and store it to provide progress updates.
             processing_message = await update.message.reply_text(
-                "🔗 Link detected. Preparing to download..."
+                "🚨‼️ LINK ALERT ‼️🚨"
             )
             await download_and_send_video(
                 update, context, url, processing_message.message_id
             )
         elif "snapchat" in url or "facebook" in url:
             processing_message = await update.message.reply_text(
-                "🔗 Link detected. Preparing to download..."
+                "🚨‼️ LINK ALERT ‼️🚨"
             )
             await download_and_send_video(
                 update, context, url, processing_message.message_id
