@@ -2,6 +2,7 @@ import logging
 import os
 import re
 from telegram import Update
+from telegram.constants import ChatAction
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -400,6 +401,106 @@ async def download_and_send_video(
                 logger.error(f"Error removing file {video_filename}: {e}")
 
 
+async def handle_bad_bot_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Handles replies with 'bad bot' to a video message.
+    Redownloads the video with Telegram-optimized settings and edits the original message.
+    """
+    if not update.message or not update.message.reply_to_message:
+        return
+
+    # Only trigger if the reply text contains 'bad bot' (case-insensitive)
+    if "bad bot" not in update.message.text.lower():
+        return
+
+    replied_msg = update.message.reply_to_message
+
+    # Only proceed if the replied message contains a video and a caption with a URL
+    url = None
+    if replied_msg.caption:
+        url = extract_url(replied_msg.caption)
+    if not url and replied_msg.text:
+        url = extract_url(replied_msg.text)
+    if not url:
+        await update.message.reply_text("❌ Could not find a URL in the original message.")
+        return
+
+    chat_id = update.effective_chat.id
+    message_id = replied_msg.message_id
+
+    # Telegram-optimized yt-dlp/ffmpeg settings
+    tg_ydl_opts = {
+        "format": "bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+        "outtmpl": "downloads/%(id)s_telegram.%(ext)s",
+        "noplaylist": True,
+        "quiet": True,
+        "no_warnings": True,
+        "merge_output_format": "mp4",
+        "postprocessors": [
+            {
+                "key": "FFmpegVideoConvertor",
+                "preferedformat": "mp4",
+            },
+            {
+                "key": "FFmpegMetadata",
+                "add_metadata": True,
+            },
+        ],
+        "postprocessor_args": [
+            "-c:v", "libx264",
+            "-preset", "medium",
+            "-crf", "26",
+            "-c:a", "aac",
+            "-b:a", "128k",
+            "-pix_fmt", "yuv420p",
+            "-movflags", "+faststart",
+            "-vf", "scale='min(720,iw)':-2"
+        ],
+    }
+
+    video_filename = None
+    try:
+        await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.UPLOAD_VIDEO)
+        status_msg = await update.message.reply_text("🔄 Reprocessing video for Telegram compatibility...")
+
+        with YoutubeDL(tg_ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=True)
+            video_filename = ydl.prepare_filename(info_dict)
+
+        if not video_filename or not os.path.exists(video_filename):
+            await status_msg.edit_text("❌ Failed to download or process the video.")
+            return
+
+        file_size_mb = os.path.getsize(video_filename) / (1024 * 1024)
+        if file_size_mb > 50:
+            await status_msg.edit_text(f"❌ The processed video is too large for Telegram ({file_size_mb:.2f}MB).")
+            return
+
+        # Edit the original video message with the new video
+        with open(video_filename, "rb") as video_file:
+            await context.bot.edit_message_media(
+                chat_id=chat_id,
+                message_id=message_id,
+                media=telegram.InputMediaVideo(
+                    media=video_file,
+                    caption=replied_msg.caption or "",
+                    supports_streaming=True,
+                ),
+            )
+        await status_msg.edit_text("✅ Video replaced with Telegram-optimized version.")
+
+    except Exception as e:
+        logger.error(f"Error in bad bot reply handler: {e}", exc_info=True)
+        await update.message.reply_text("❌ Failed to reprocess and replace the video.")
+
+    finally:
+        if video_filename and os.path.exists(video_filename):
+            try:
+                os.remove(video_filename)
+            except Exception:
+                pass
+
+
 def main() -> None:
     """Set up the application and run the bot."""
     if not os.path.exists("downloads"):
@@ -415,6 +516,13 @@ def main() -> None:
     application.add_handler(CommandHandler("start", start))
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
+    )
+    # Add handler for 'bad bot' replies
+    application.add_handler(
+        MessageHandler(
+            filters.REPLY & filters.TEXT & filters.Regex(r"(?i)\bbad bot\b"),
+            handle_bad_bot_reply
+        )
     )
 
     print("Bot is running...")

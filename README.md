@@ -19,7 +19,7 @@ A Telegram bot that downloads videos from YouTube, Instagram, Facebook, and othe
 ## Building the Docker Image
 
 ```sh
-docker build -t telegram-video-download-bot .
+docker build -t bot:1.0 .
 ```
 
 ## Running the Container
@@ -27,7 +27,7 @@ docker build -t telegram-video-download-bot .
 You **must** provide your Telegram Bot Token as an environment variable named `API_TOKEN`.
 
 ```sh
-docker run -e API_TOKEN=your_telegram_bot_token_here telegram-video-download-bot
+docker run -e API_TOKEN=your_telegram_bot_token_here telegram-video-download-bot --name tbot bot:1.0
 ```
 
 - Replace `your_telegram_bot_token_here` with your actual bot token from BotFather.
@@ -38,7 +38,7 @@ docker run -e API_TOKEN=your_telegram_bot_token_here telegram-video-download-bot
 To ensure the bot always restarts if it crashes or the host reboots, use Docker's `--restart always` flag:
 
 ```sh
-docker run --restart always -e API_TOKEN=your_telegram_bot_token_here telegram-video-download-bot
+docker run --restart always -e API_TOKEN=your_telegram_bot_token_here telegram-video-download-bot --name tbot bot:1.0
 ```
 
 ## Environment Variables
