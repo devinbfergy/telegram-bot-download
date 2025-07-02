@@ -75,9 +75,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             # First, check if the URL is recognized by yt-dlp without verbose output
             # We use `download=False` and `process=False` to only check if the URL
             # is recognized by an extractor, without fetching actual video info or downloading.
-            with YoutubeDL({'quiet': True, 'no_warnings': True}) as ydl:
+            with YoutubeDL({"quiet": True, "no_warnings": True}) as ydl:
                 ydl.extract_info(url, download=False, process=False)
-            
+
             # If no exception, the URL is likely supported. Now send the initial processing message.
             processing_message = await update.message.reply_text(
                 "✅ URL is supported. Preparing to download..."
@@ -93,7 +93,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         except Exception as e:
             # For other unexpected errors during validation, also do not send a message.
             # Just log the error.
-            logger.error(f"An unexpected error occurred during URL validation for {url}: {e}", exc_info=True)
+            logger.error(
+                f"An unexpected error occurred during URL validation for {url}: {e}",
+                exc_info=True,
+            )
 
 
 async def download_and_send_video(
@@ -132,24 +135,34 @@ async def download_and_send_video(
             },
         ],
         "postprocessor_args": [
-            "-c:v", "libx64",  # Video codec
-            "-preset", "medium",  # Encoding speed vs. compression efficiency
-            "-crf", "28",  # Constant Rate Factor for quality (higher is lower quality)
-            "-c:a", "aac",  # Audio codec
-            "-b:a", "128k",  # Audio bitrate
-            "-pix_fmt", "yuv420p",  # Pixel format for compatibility
-            "-movflags", "+faststart",  # Optimize for streaming (metadata at start)
+            "-c:v",
+            "libx64",  # Video codec
+            "-preset",
+            "medium",  # Encoding speed vs. compression efficiency
+            "-crf",
+            "28",  # Constant Rate Factor for quality (higher is lower quality)
+            "-c:a",
+            "aac",  # Audio codec
+            "-b:a",
+            "128k",  # Audio bitrate
+            "-pix_fmt",
+            "yuv420p",  # Pixel format for compatibility
+            "-movflags",
+            "+faststart",  # Optimize for streaming (metadata at start)
         ],
     }
 
     # --- Specific YDL options for YouTube (standard videos and shorts) ---
     # These override or supplement the default options if the URL is from YouTube.
     # We include `skip_dash_manifest` for YouTube for better performance.
-    youtube_ydl_opts = {**default_ydl_opts, **{
-        "extractor_args": {"youtube": {"skip_dash_manifest": True}},
-        # Potentially adjust format for YouTube if specific quality is desired,
-        # but `bestvideo[ext=mp4][height<=720]+bestaudio` is usually good.
-    }}
+    youtube_ydl_opts = {
+        **default_ydl_opts,
+        **{
+            "extractor_args": {"youtube": {"skip_dash_manifest": True}},
+            # Potentially adjust format for YouTube if specific quality is desired,
+            # but `bestvideo[ext=mp4][height<=720]+bestaudio` is usually good.
+        },
+    }
 
     # --- Select the appropriate options based on the URL ---
     if is_youtube_url(url):
@@ -170,8 +183,9 @@ async def download_and_send_video(
             # After download and processing, get the final filename.
             # yt-dlp might change the extension during post-processing (e.g., from .webm to .mp4).
             # The 'filepath' key in the info_dict after download contains the final path.
-            video_filename = info_dict.get('filepath') or ydl.prepare_filename(info_dict)
-
+            video_filename = info_dict.get("filepath") or ydl.prepare_filename(
+                info_dict
+            )
 
         if not video_filename or not os.path.exists(video_filename):
             raise FileNotFoundError(
@@ -226,8 +240,9 @@ async def download_and_send_video(
     except Exception as e:
         logger.error(f"An unexpected error occurred for URL {url}: {e}", exc_info=True)
         # Avoid trying to edit/delete messages that might already be gone
-        if "Message to delete not found" not in str(e) and \
-           "Message to edit not found" not in str(e):
+        if "Message to delete not found" not in str(
+            e
+        ) and "Message to edit not found" not in str(e):
             await context.bot.edit_message_text(
                 "❌ An unexpected error occurred. Please try again later.",
                 chat_id=chat_id,

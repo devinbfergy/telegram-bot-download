@@ -12,6 +12,13 @@ from telegram.ext import (
 from yt_dlp import YoutubeDL
 from yt_dlp.utils import DownloadError
 
+try:
+    import cv2
+    import numpy as np
+except ImportError:
+    cv2 = None
+    np = None
+
 # Enable logging
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
@@ -40,6 +47,7 @@ def is_youtube_shorts_url(url: str) -> bool:
     )
     return re.match(youtube_pattern, url) is not None
 
+
 def is_video_url(url):
     """
     Checks if a URL is a video URL that yt-dlp can actually extract
@@ -48,13 +56,13 @@ def is_video_url(url):
     without authentication, which is what we want for actual validity.
     """
     ydl_opts = {
-        'extract_flat': True, # Only extract top-level info, don't recurse into playlists
-        'quiet': True,       # Suppress standard output
-        'simulate': True,    # Still simulate, but we'll inspect the info dictionary
-        'skip_download': True, # Don't download
-        'force_generic_extractor': False, # Allow specific extractors
-        'no_warnings': True, # Suppress warnings
-        'dump_single_json': True, # For inspecting the output
+        "extract_flat": True,  # Only extract top-level info, don't recurse into playlists
+        "quiet": True,  # Suppress standard output
+        "simulate": True,  # Still simulate, but we'll inspect the info dictionary
+        "skip_download": True,  # Don't download
+        "force_generic_extractor": False,  # Allow specific extractors
+        "no_warnings": True,  # Suppress warnings
+        "dump_single_json": True,  # For inspecting the output
     }
     with YoutubeDL(ydl_opts) as ydl:
         try:
@@ -62,7 +70,7 @@ def is_video_url(url):
             logger.debug(info)
             # --- Specific checks based on the extracted 'info' ---
             # 1. Check if 'extractor' is recognized and not generic
-            if info.get('extractor') == 'generic':
+            if info.get("extractor") == "generic":
                 # If it's a generic extractor, yt-dlp couldn't find a specific one,
                 # which often means it's not a direct video or supported content.
                 return False
@@ -71,31 +79,42 @@ def is_video_url(url):
             #    This is the strongest indicator of a *downloadable* video.
             #    For a simple video, 'formats' will be a list.
             #    For a playlist/channel, 'entries' might contain videos with formats.
-            if 'formats' in info and len(info['formats']) > 0:
+            if "formats" in info and len(info["formats"]) > 0:
                 return True
-            
+
             # If it's a playlist or channel URL, check entries for formats
-            if 'entries' in info and isinstance(info['entries'], list):
-                for entry in info['entries']:
-                    if entry and 'formats' in entry and len(entry['formats']) > 0:
+            if "entries" in info and isinstance(info["entries"], list):
+                for entry in info["entries"]:
+                    if entry and "formats" in entry and len(entry["formats"]) > 0:
                         return True
-            
+
             # Additional check: If 'url' is present and points to a video file
-            if 'url' in info and isinstance(info['url'], str) and ('video' in info['url'] or any(ext in info['url'] for ext in ['.mp4', '.mkv', '.webm', '.mov', '.avi'])):
+            if (
+                "url" in info
+                and isinstance(info["url"], str)
+                and (
+                    "video" in info["url"]
+                    or any(
+                        ext in info["url"]
+                        for ext in [".mp4", ".mkv", ".webm", ".mov", ".avi"]
+                    )
+                )
+            ):
                 return True
 
             # If none of the above, it's likely not a direct video or properly recognized video content
             return False
 
-        except DownloadError as e:
+        except DownloadError:
             # yt-dlp raises DownloadError for unsupported URLs,
             # videos that don't exist, or issues like requiring login.
             # print(f"DownloadError for {url}: {e}")
             return False
-        except Exception as e:
+        except Exception:
             # Catch any other unexpected exceptions
             # print(f"An unexpected error occurred for {url}: {e}")
             return False
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Sends a welcome message when the /start command is issued."""
@@ -120,19 +139,51 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if url:
         if is_video_url(url):
             # Send an initial confirmation message and store it to provide progress updates.
-            processing_message = await update.message.reply_text(
-                "🚨‼️ LINK ALERT ‼️🚨"
-            )
+            processing_message = await update.message.reply_text("🚨‼️ LINK ALERT ‼️🚨")
             await download_and_send_video(
                 update, context, url, processing_message.message_id
             )
         elif "snapchat" in url or "facebook" in url:
-            processing_message = await update.message.reply_text(
-                "🚨‼️ LINK ALERT ‼️🚨"
-            )
+            processing_message = await update.message.reply_text("🚨‼️ LINK ALERT ‼️🚨")
             await download_and_send_video(
                 update, context, url, processing_message.message_id
             )
+
+
+def is_frozen_frame_video(video_path, max_frames=30, threshold=1e-3):
+    """
+    Checks if the video at video_path is a frozen frame video (all frames are visually identical).
+    Only checks up to max_frames for efficiency.
+    Returns True if frozen, False otherwise, or None if OpenCV is not available.
+    """
+    if cv2 is None or np is None:
+        logger.warning("OpenCV not installed, skipping frozen frame check.")
+        return None
+    try:
+        cap = cv2.VideoCapture(video_path)
+        ret, prev_frame = cap.read()
+        if not ret:
+            cap.release()
+            return None
+        prev_frame_gray = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
+        frame_count = 1
+        frozen = True
+        while frame_count < max_frames:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            diff = cv2.absdiff(prev_frame_gray, frame_gray)
+            nonzero = np.count_nonzero(diff)
+            if nonzero > threshold * diff.size:
+                frozen = False
+                break
+            frame_count += 1
+        cap.release()
+        return frozen
+    except Exception as e:
+        logger.error(f"Error during frozen frame check: {e}")
+        return None
 
 
 async def download_and_send_video(
@@ -220,6 +271,26 @@ async def download_and_send_video(
         ],
     }
 
+    # --- Fallback yt-dlp Options for retry ---
+    fallback_ydl_opts = {
+        "format": "best[ext=mp4]/best",
+        "outtmpl": "downloads/%(id)s_fallback.%(ext)s",
+        "noplaylist": True,
+        "quiet": True,
+        "no_warnings": True,
+        "merge_output_format": "mp4",
+        "postprocessors": [
+            {
+                "key": "FFmpegVideoConvertor",
+                "preferedformat": "mp4",
+            },
+            {
+                "key": "FFmpegMetadata",
+                "add_metadata": True,
+            },
+        ],
+    }
+
     # --- Select the appropriate options based on the URL ---
     if is_youtube_shorts_url(url):
         logger.info(f"YouTube Shorts link detected. Using specific settings for: {url}")
@@ -242,6 +313,31 @@ async def download_and_send_video(
             raise FileNotFoundError(
                 f"Downloaded file not found on disk: {video_filename}"
             )
+
+        # --- Frozen frame check ---
+        frozen_result = is_frozen_frame_video(video_filename)
+        if frozen_result is True:
+            logger.warning(f"Frozen frame video detected: {video_filename}")
+            await context.bot.edit_message_text(
+                "⚠️ Detected a frozen frame video. Retrying download with fallback settings...",
+                chat_id=chat_id,
+                message_id=processing_message_id,
+            )
+            try:
+                os.remove(video_filename)
+            except Exception:
+                pass
+            with YoutubeDL(fallback_ydl_opts) as ydl:
+                info_dict = ydl.extract_info(url, download=True)
+                video_filename = ydl.prepare_filename(info_dict)
+            frozen_result2 = is_frozen_frame_video(video_filename)
+            if frozen_result2 is True:
+                await context.bot.edit_message_text(
+                    "❌ The downloaded video appears to be frozen (all frames identical). This may be a site limitation.",
+                    chat_id=chat_id,
+                    message_id=processing_message_id,
+                )
+                return
 
         file_size_mb = os.path.getsize(video_filename) / (1024 * 1024)
         if file_size_mb > 50:

@@ -33,6 +33,14 @@ docker run -e API_TOKEN=your_telegram_bot_token_here telegram-video-download-bot
 - Replace `your_telegram_bot_token_here` with your actual bot token from BotFather.
 - The bot will start and listen for messages.
 
+### Run with automatic restart
+
+To ensure the bot always restarts if it crashes or the host reboots, use Docker's `--restart always` flag:
+
+```sh
+docker run --restart always -e API_TOKEN=your_telegram_bot_token_here telegram-video-download-bot
+```
+
 ## Environment Variables
 
 | Variable   | Description                    | Required |
