@@ -20,6 +20,11 @@ except ImportError:
     cv2 = None
     np = None
 
+try:
+    import gallery_dl
+except ImportError:
+    gallery_dl = None
+
 # Enable logging
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
@@ -129,7 +134,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
-    Handles incoming text messages, extracts a URL, and attempts to download the video.
+    Handles incoming text messages, extracts a URL, and attempts to download the video or image.
     """
     if not update.message or not update.message.text:
         return
@@ -139,9 +144,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     if url:
         if is_video_url(url):
-            # Send an initial confirmation message and store it to provide progress updates.
             processing_message = await update.message.reply_text("🚨‼️ LINK ALERT ‼️🚨")
             await download_and_send_video(
+                update, context, url, processing_message.message_id
+            )
+        elif is_image_url(url):
+            processing_message = await update.message.reply_text("🚨‼️ IMAGE LINK ALERT ‼️🚨")
+            await download_and_send_images(
                 update, context, url, processing_message.message_id
             )
         elif "snapchat" in url or "facebook" in url:
@@ -196,6 +205,7 @@ async def download_and_send_video(
     """
     Downloads a video from a URL using yt-dlp, providing status updates to the user,
     and sends the final video file back. It uses different settings for YouTube Shorts.
+    If the download fails and the link is an image, tries to download and send images.
     """
     chat_id = update.effective_chat.id
     video_filename = None
@@ -368,6 +378,10 @@ async def download_and_send_video(
 
     except DownloadError as de:
         logger.error(f"Download failed for URL {url}: {de}")
+        # Try image fallback
+        if is_image_url(url):
+            await download_and_send_images(update, context, url, processing_message_id)
+            return
         error_message = "❌ Download Failed. The link might be private, broken, or from an unsupported site."
         await context.bot.edit_message_text(
             error_message, chat_id=chat_id, message_id=processing_message_id
@@ -399,6 +413,96 @@ async def download_and_send_video(
                 logger.info(f"Cleaned up downloaded file: {video_filename}")
             except OSError as e:
                 logger.error(f"Error removing file {video_filename}: {e}")
+
+
+def is_image_url(url: str) -> bool:
+    """
+    Checks if a URL points directly to an image file or is likely to be an image gallery.
+    Uses file extension or gallery-dl extractor check.
+    """
+    image_exts = (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tiff")
+    if any(url.lower().endswith(ext) for ext in image_exts):
+        return True
+    if gallery_dl:
+        # Use gallery-dl's extractor to check if it can handle the URL
+        try:
+            extractors = list(gallery_dl.config.extractors())
+            logger.debug(f"Available extractors: {extractors}")
+            for ext in extractors:
+                if ext in url:
+                    return True
+        except Exception:
+            pass
+    return False
+
+
+async def download_and_send_images(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    url: str,
+    processing_message_id: int,
+):
+    """
+    Downloads images from a URL using gallery-dl and sends them as photos.
+    """
+    import glob
+    import shutil
+    chat_id = update.effective_chat.id
+    download_dir = "downloads/images"
+    image_files = []
+    try:
+        await context.bot.edit_message_text(
+            "🖼️ Downloading image(s)...", chat_id=chat_id, message_id=processing_message_id
+        )
+        if not os.path.exists(download_dir):
+            os.makedirs(download_dir)
+        # Use gallery-dl to download images
+        if gallery_dl is not None:
+            # Use gallery-dl Python API
+            result = gallery_dl.job.Job(url, {"base-directory": download_dir})
+            result.run()
+        else:
+            # Fallback: use subprocess if gallery-dl CLI is available
+            import subprocess
+            subprocess.run(
+                ["gallery-dl", "-d", download_dir, url],
+                check=True,
+                capture_output=True,
+            )
+        # Collect all images from the download directory
+        image_files = sorted(
+            glob.glob(os.path.join(download_dir, "**", "*.*"), recursive=True)
+        )
+        image_files = [f for f in image_files if f.lower().endswith((".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tiff"))]
+        if not image_files:
+            await context.bot.edit_message_text(
+                "❌ Could not extract any images from the link.",
+                chat_id=chat_id,
+                message_id=processing_message_id,
+            )
+            return
+        # Send as media group if multiple, else as single photo
+        if len(image_files) > 1:
+            from telegram import InputMediaPhoto
+            media = [InputMediaPhoto(open(f, "rb")) for f in image_files[:10]]  # Telegram max 10
+            await update.message.reply_media_group(media=media)
+            for m in media:
+                m.media.close()
+        else:
+            with open(image_files[0], "rb") as img:
+                await update.message.reply_photo(photo=img)
+        await context.bot.delete_message(chat_id=chat_id, message_id=processing_message_id)
+    except Exception as e:
+        logger.error(f"Image download failed for URL {url}: {e}", exc_info=True)
+        await context.bot.edit_message_text(
+            "❌ Failed to download image(s) from the link.",
+            chat_id=chat_id,
+            message_id=processing_message_id,
+        )
+    finally:
+        # Clean up all downloaded images and folders
+        if os.path.exists(download_dir):
+            shutil.rmtree(download_dir, ignore_errors=True)
 
 
 async def handle_bad_bot_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
