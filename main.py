@@ -458,8 +458,10 @@ async def download_and_send_images(
             os.makedirs(download_dir)
         # Use gallery-dl to download images
         if gallery_dl is not None:
-            # Use gallery-dl Python API
-            result = gallery_dl.job.Job(url, {"base-directory": download_dir})
+            # Use gallery-dl Python API with proper config object
+            config = gallery_dl.config.Config()
+            config.set("base-directory", download_dir)
+            result = gallery_dl.job.Job(url, config)
             result.run()
         else:
             # Fallback: use subprocess if gallery-dl CLI is available
