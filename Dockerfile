@@ -34,7 +34,7 @@ COPY pyproject.toml /app/
 COPY uv.lock /app/
 COPY main.py /app/
 COPY .python-version /app/
-RUN uv sync
+RUN uv sync --upgrade --prerelease allow
 
 # Command to run your application (example)
 # Replace with the actual command to start your application

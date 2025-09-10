@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "aiohttp>=3.12.15",
     "gallery-dl>=1.29.7",
     "opencv-python>=4.11.0.86",
     "python-telegram-bot>=22.1",

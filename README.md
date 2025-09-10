@@ -7,6 +7,8 @@ A Telegram bot that downloads videos from YouTube, Instagram, Facebook, and othe
 - Download videos from a wide range of platforms.
 - Automatic detection of video links in messages.
 - Sends videos directly to Telegram chats (subject to Telegram's 50MB upload limit).
+- Reply to a video with `bad bot` to re-process it for better Telegram compatibility.
+- Ask the bot if a statement is real by replying with `@gork is this real` (requires `GEMINI_API_KEY`).
 - Built with [python-telegram-bot](https://python-telegram-bot.org/) and [yt-dlp](https://github.com/yt-dlp/yt-dlp).
 
 ## Prerequisites
@@ -27,7 +29,7 @@ docker build -t bot:1.0 .
 You **must** provide your Telegram Bot Token as an environment variable named `API_TOKEN`.
 
 ```sh
-docker run -e API_TOKEN=your_telegram_bot_token_here telegram-video-download-bot --name tbot bot:1.0
+docker run -e API_TOKEN=your_telegram_bot_token_here --name tbot bot:1.0
 ```
 
 - Replace `your_telegram_bot_token_here` with your actual bot token from BotFather.
@@ -38,20 +40,23 @@ docker run -e API_TOKEN=your_telegram_bot_token_here telegram-video-download-bot
 To ensure the bot always restarts if it crashes or the host reboots, use Docker's `--restart always` flag:
 
 ```sh
-docker run --restart always -e API_TOKEN=your_telegram_bot_token_here telegram-video-download-bot --name tbot bot:1.0
+docker run --restart always -e API_TOKEN=your_telegram_bot_token_here --name tbot bot:1.0
 ```
 
 ## Environment Variables
 
-| Variable   | Description                    | Required |
-|------------|--------------------------------|----------|
-| API_TOKEN  | Telegram Bot API token         | Yes      |
+| Variable        | Description                                     | Required |
+|-----------------|-------------------------------------------------|----------|
+| API_TOKEN       | Telegram Bot API token                          | Yes      |
+| GEMINI_API_KEY  | Gemini API key for the `@gork is this real` feature | No       |
 
 ## Usage
 
 1. Start the bot using the instructions above.
 2. Send a message containing a video link (YouTube, Instagram, Facebook, etc.) to your bot on Telegram.
 3. The bot will reply with the downloaded video (if supported and under 50MB).
+4. Reply to a video with `bad bot` to have the bot re-process it for better streaming on Telegram.
+5. Reply to a text message with `@gork is this real` to get a response from Gemini about the statement's validity.
 
 ## Contribution Guidelines
 

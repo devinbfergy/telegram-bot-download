@@ -1,0 +1,12 @@
+python-telegram-bot>=21.0.0
+yt-dlp>=2024.7.1
+gallery-dl>=1.26.0
+opencv-python>=4.8.0
+Pillow>=10.0.0
+google-generativeai>=0.7.0
+# Tooling / Dev
+black>=24.4.0
+isort>=5.13.0
+ruff>=0.5.0
+mypy>=1.10.0
+pytest>=8.2.0

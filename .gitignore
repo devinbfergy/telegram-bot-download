@@ -10,3 +10,6 @@ wheels/
 .venv
 downloads
 downloads/*
+gallery-dl/*
+gallery-dl/*/*
+gallery-dl
