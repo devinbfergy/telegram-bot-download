@@ -1,5 +1,5 @@
 from pathlib import Path
-from app.media.inspection import detect_frozen_frames
+from ..media.inspection import detect_frozen_frames
 
 def test_detect_frozen_frames_placeholder(tmp_path: Path):
     dummy = tmp_path / "video.mp4"
