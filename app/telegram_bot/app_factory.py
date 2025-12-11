@@ -7,7 +7,7 @@ from telegram.ext import ApplicationBuilder  # type: ignore
 
 log = get_logger(__name__)
 
-def create_application():
+def create_app():
     cfg = load_config()
     setup_logging(cfg.log_level, cfg.log_json)
     if not cfg.api_token:

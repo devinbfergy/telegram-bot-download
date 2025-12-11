@@ -1,9 +1,16 @@
 from __future__ import annotations
+import re
 from urllib.parse import urlparse
 from app.core.exceptions import UnsupportedURLError, SizeLimitExceeded
 from app.config.settings import TELEGRAM_FILE_LIMIT_MB
 
 ALLOWED_SCHEMES = {"http", "https"}
+
+def extract_url(text: str) -> str | None:
+    """Extracts the first URL from a given text using a regex pattern."""
+    url_pattern = r"(https?://[^\s/$.?#].[^\s]*)"
+    match = re.search(url_pattern, text)
+    return match.group(0) if match else None
 
 def validate_url(url: str) -> str:
     p = urlparse(url)

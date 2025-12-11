@@ -9,7 +9,8 @@ from app.features.ai_truth_check import ai_truth_check
 from app.features.reprocess_bad_bot import reprocess_bad_bot
 from app.media.downloader import Downloader
 from app.telegram_bot.status_messenger import StatusMessenger
-from app.utils.validation import extract_url, is_image_url, is_tiktok_photo_url, is_video_url
+from app.utils.validation import extract_url
+from app.media.detectors import is_image_url, is_tiktok_photo_url, is_video_url
 
 logger = logging.getLogger(__name__)
 
