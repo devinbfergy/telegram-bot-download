@@ -8,6 +8,7 @@ from typing import List
 from telegram import InputMediaPhoto, Message
 
 from app.config.settings import AppSettings
+from app.config.strings import MESSAGES
 from app.media.slideshow import create_slideshow_from_media
 from app.telegram_bot.status_messenger import StatusMessenger
 from app.utils.filesystem import create_temp_dir
@@ -51,7 +52,7 @@ async def download_and_send_with_gallery_dl(
 
         all_files = list(temp_dir.rglob("*.*"))
         if not all_files:
-            await status_messenger.edit_message("❌ No media found via gallery-dl.")
+            await status_messenger.edit_message(MESSAGES["gallery_dl_no_media"])
             return False
 
         # Categorize files
@@ -63,7 +64,7 @@ async def download_and_send_with_gallery_dl(
         if videos:
             chosen_video = min(videos, key=lambda p: p.stat().st_size)
             if chosen_video.stat().st_size <= settings.telegram_max_video_size:
-                await status_messenger.edit_message("⬆️ Uploading video (gallery-dl)...")
+                await status_messenger.edit_message(MESSAGES["gallery_dl_uploading_video"])
                 with chosen_video.open("rb") as vf:
                     await message.reply_video(
                         video=vf, supports_streaming=True, disable_notification=True
@@ -73,7 +74,7 @@ async def download_and_send_with_gallery_dl(
         # 2. If no suitable video, try to create a slideshow
         if images and audios:
             slideshow_path = temp_dir / "slideshow.mp4"
-            await status_messenger.edit_message("🛠️ Building slideshow video...")
+            await status_messenger.edit_message(MESSAGES["slideshow_building"])
             success = await asyncio.to_thread(
                 create_slideshow_from_media,
                 images[:60],  # Limit number of images
@@ -81,7 +82,7 @@ async def download_and_send_with_gallery_dl(
                 slideshow_path,
             )
             if success and slideshow_path.stat().st_size <= settings.telegram_max_video_size:
-                await status_messenger.edit_message("⬆️ Uploading slideshow...")
+                await status_messenger.edit_message(MESSAGES["gallery_dl_uploading_slideshow"])
                 with slideshow_path.open("rb") as vf:
                     await message.reply_video(
                         video=vf, supports_streaming=True, disable_notification=True
@@ -90,19 +91,19 @@ async def download_and_send_with_gallery_dl(
 
         # 3. If no video or slideshow, send images
         if images:
-            await status_messenger.edit_message("⬆️ Sending images (gallery-dl)...")
+            await status_messenger.edit_message(MESSAGES["gallery_dl_sending_images"])
             media_group = [InputMediaPhoto(img.open("rb")) for img in images[:10]]
             await message.reply_media_group(media=media_group, disable_notification=True)
             for m in media_group:
                 m.media.close()
             return True
 
-        await status_messenger.edit_message("❌ No suitable media found to send.")
+        await status_messenger.edit_message(MESSAGES["gallery_dl_no_suitable_media"])
         return False
 
     except Exception as e:
         logger.error(f"gallery-dl failed for {url}: {e}", exc_info=True)
-        await status_messenger.edit_message(f"❌ gallery-dl error: {e}")
+        await status_messenger.edit_message(MESSAGES["gallery_dl_error"].format(error=e))
         return False
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)

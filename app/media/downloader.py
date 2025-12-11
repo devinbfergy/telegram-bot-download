@@ -7,7 +7,8 @@ from telegram import Message
 from yt_dlp import YoutubeDL
 from yt_dlp.utils import DownloadError
 
-from app.config.settings import AppSettings
+from app.config.settings import AppSettings, TELEGRAM_FILE_LIMIT_MB
+from app.config.strings import MESSAGES
 from app.media.detectors import is_slideshow, is_youtube_shorts_url
 from app.media.gallery_dl import download_and_send_with_gallery_dl
 from app.media.inspection import detect_frozen_frames
@@ -39,7 +40,7 @@ class Downloader:
             ydl_opts["outtmpl"] = str(temp_dir / os.path.basename(ydl_opts["outtmpl"]))
 
 
-            await self.status_messenger.edit_message("📥 Downloading...")
+            await self.status_messenger.edit_message(MESSAGES["downloading"])
 
             # Run yt-dlp in a thread to avoid blocking
             info_dict = await asyncio.to_thread(self._run_ytdlp_download, url, ydl_opts)
@@ -49,7 +50,7 @@ class Downloader:
 
             # If it's a slideshow, delegate to gallery-dl
             if is_slideshow(info_dict):
-                await self.status_messenger.edit_message("Detected slideshow, using gallery-dl...")
+                await self.status_messenger.edit_message(MESSAGES["slideshow_detected"])
                 await download_and_send_with_gallery_dl(
                     url, message, self.status_messenger, self.settings, purpose="slideshow"
                 )
@@ -76,7 +77,7 @@ class Downloader:
             if detect_frozen_frames(video_path):
                 logger.warning(f"Frozen frame video detected: {video_path}")
                 await self.status_messenger.edit_message(
-                    "⚠️ Frozen frame video detected. Retrying with fallback..."
+                    MESSAGES["frozen_frame_retry"]
                 )
                 safe_cleanup(video_path)
 
@@ -94,7 +95,7 @@ class Downloader:
 
                 if detect_frozen_frames(video_path):
                     await self.status_messenger.edit_message(
-                        "❌ Fallback download is also a frozen video. Aborting."
+                        MESSAGES["frozen_frame_failed"]
                     )
                     return
 
@@ -102,18 +103,21 @@ class Downloader:
             if video_path.stat().st_size > self.settings.telegram_max_video_size:
                 file_size_mb = video_path.stat().st_size / (1024 * 1024)
                 await self.status_messenger.edit_message(
-                    f"❌ Video is too large ({file_size_mb:.2f}MB). Limit is 50MB."
+                    MESSAGES["video_too_large"].format(
+                        file_size_mb=file_size_mb,
+                        limit_mb=TELEGRAM_FILE_LIMIT_MB
+                    )
                 )
                 return
 
             # --- Uploading ---
-            await self.status_messenger.edit_message("⬆️ Uploading to Telegram...")
+            await self.status_messenger.edit_message(MESSAGES["uploading"])
             with video_path.open("rb") as video_file:
                 await message.reply_video(
                     video=video_file,
                     supports_streaming=True,
-                    read_timeout=120,
-                    write_timeout=120,
+                    read_timeout=self.settings.telegram_read_timeout,
+                    write_timeout=self.settings.telegram_write_timeout,
                     disable_notification=True,
                 )
 
@@ -128,7 +132,7 @@ class Downloader:
             logger.error(f"An unexpected error occurred for URL {url}: {e}", exc_info=True)
             if "Message to delete not found" not in str(e):
                 await self.status_messenger.edit_message(
-                    "❌ An unexpected error occurred. Please try again later."
+                    MESSAGES["error_generic"]
                 )
         finally:
             safe_cleanup(temp_dir)
