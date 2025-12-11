@@ -1,5 +1,4 @@
 from app.media.detectors import is_video_url, is_image_url
-from app.core.types import MediaKind
 
 
 def test_is_video_basic():

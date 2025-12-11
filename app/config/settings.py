@@ -6,11 +6,13 @@ from pathlib import Path
 
 # Basic env loading (could later use python-dotenv)
 
+
 def _get(name: str, default: str | None = None, required: bool = False) -> str:
     val = os.getenv(name, default)
     if required and (val is None or val == ""):
         raise RuntimeError(f"Missing required environment variable: {name}")
     return val or ""
+
 
 BASE_DIR = Path(os.getenv("APP_BASE_DIR", Path.cwd()))
 DOWNLOAD_BASE_DIR = BASE_DIR / "downloads"
@@ -45,12 +47,16 @@ SLIDESHOW = {
     "transition": "fade",
 }
 
+SLIDESHOW_MAX_IMAGES = 60
+TELEGRAM_MAX_MEDIA_GROUP_SIZE = 10
+
 LOG_LEVEL = _get("LOG_LEVEL", "INFO")
 LOG_JSON = _get("LOG_JSON", "0") in {"1", "true", "True"}
 
 API_TOKEN = _get("API_TOKEN", required=False)
 GEMINI_API_KEY = _get("GEMINI_API_KEY", required=False)
 AI_TRUTH_CHECK_ENABLED = _get("AI_TRUTH_CHECK_ENABLED", "0") in {"1", "true", "True"}
+
 
 @dataclass(slots=True)
 class AppSettings:
@@ -61,17 +67,21 @@ class AppSettings:
     log_json: bool = LOG_JSON
     timeouts: dict[str, int] = None  # type: ignore
     ai_truth_check_enabled: bool = AI_TRUTH_CHECK_ENABLED
-    
+
     # Telegram settings
     telegram_max_video_size: int = TELEGRAM_FILE_LIMIT_BYTES
     telegram_upload_timeout: int = TELEGRAM_UPLOAD_TIMEOUT
     telegram_read_timeout: int = TELEGRAM_READ_TIMEOUT
     telegram_write_timeout: int = TELEGRAM_WRITE_TIMEOUT
-    
+
     # Media file extensions
     media_video_extensions: set[str] = None  # type: ignore
     media_image_extensions: set[str] = None  # type: ignore
     media_audio_extensions: set[str] = None  # type: ignore
+
+    # Media limits
+    slideshow_max_images: int = SLIDESHOW_MAX_IMAGES
+    telegram_max_media_group_size: int = TELEGRAM_MAX_MEDIA_GROUP_SIZE
 
     def __post_init__(self):
         if self.timeouts is None:

@@ -10,7 +10,7 @@ log = get_logger(__name__)
 async def send_video(context, chat_id: int, file_path: Path, caption: str | None = None):  # noqa: ANN001
     try:
         return await context.bot.send_video(chat_id=chat_id, video=file_path.open('rb'), caption=caption)  # type: ignore[attr-defined]
-    except Exception as e:  # noqa: BLE001
+    except Exception:  # noqa: BLE001
         log.exception("send.video_failed path=%s", file_path)
 
 async def send_image(context, chat_id: int, file_path: Path, caption: str | None = None):  # noqa: ANN001

@@ -1,4 +1,3 @@
-import pytest
 from app.media.detectors import is_image_url
 
 

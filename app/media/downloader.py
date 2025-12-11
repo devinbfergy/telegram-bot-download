@@ -67,9 +67,9 @@ class Downloader:
 
             # A more robust way to find the output file
             if not video_path.exists():
-                found_files = list(temp_dir.glob(f"*.mp4"))
+                found_files = list(temp_dir.glob("*.mp4"))
                 if not found_files:
-                    found_files = list(temp_dir.glob(f"*.*"))  # any extension
+                    found_files = list(temp_dir.glob("*.*"))  # any extension
 
                 if found_files:
                     video_path = sorted(
@@ -103,7 +103,7 @@ class Downloader:
                     fallback_opts["outtmpl"] % {"id": info_dict["id"], "ext": "mp4"}
                 )
                 if not video_path.exists():
-                    found_files = list(temp_dir.glob(f"*.mp4"))
+                    found_files = list(temp_dir.glob("*.mp4"))
                     if found_files:
                         video_path = found_files[0]
                     else:

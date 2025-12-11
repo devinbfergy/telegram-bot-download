@@ -18,7 +18,6 @@ from app.config.settings import FROZEN_FRAME
 def _frame_hash(frame) -> int:  # simple average hash
     if Image is None:
         return int(frame.mean())  # coarse fallback
-    import numpy as np
     img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY))  # type: ignore
     img = img.resize((8, 8))
     pixels = list(img.getdata())

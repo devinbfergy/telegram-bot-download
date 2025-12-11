@@ -2,13 +2,11 @@ import logging
 import shutil
 import subprocess
 from pathlib import Path
-from typing import List
 
 from telegram import InputMediaPhoto, Message
 
 from app.config.settings import AppSettings
 from app.config.strings import MESSAGES
-from app.core.exceptions import ExtractionFailed, SizeLimitExceeded
 from app.media.slideshow import create_slideshow_from_media
 from app.telegram_bot.status_messenger import StatusMessenger
 from app.utils.concurrency import run_blocking
@@ -46,7 +44,9 @@ async def download_and_send_with_gallery_dl(
     """
     temp_dir = create_temp_dir()
     try:
-        await status_messenger.edit_message(f"🧩 Using gallery-dl for {purpose}...")
+        await status_messenger.edit_message(
+            MESSAGES["gallery_dl_processing"].format(purpose=purpose)
+        )
 
         # Run gallery-dl in a separate thread to avoid blocking asyncio loop
         await run_blocking(_run_gallery_dl_subprocess, url, temp_dir)
@@ -86,7 +86,7 @@ async def download_and_send_with_gallery_dl(
             await status_messenger.edit_message(MESSAGES["slideshow_building"])
             success = await run_blocking(
                 create_slideshow_from_media,
-                images[:60],  # Limit number of images
+                images[: settings.slideshow_max_images],
                 audios[0],
                 slideshow_path,
             )
@@ -106,7 +106,10 @@ async def download_and_send_with_gallery_dl(
         # 3. If no video or slideshow, send images
         if images:
             await status_messenger.edit_message(MESSAGES["gallery_dl_sending_images"])
-            media_group = [InputMediaPhoto(img.open("rb")) for img in images[:10]]
+            media_group = [
+                InputMediaPhoto(img.open("rb"))
+                for img in images[: settings.telegram_max_media_group_size]
+            ]
             await message.reply_media_group(
                 media=media_group, disable_notification=True
             )

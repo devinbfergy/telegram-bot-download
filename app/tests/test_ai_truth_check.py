@@ -31,9 +31,7 @@ async def test_ai_truth_check_success(MockClientSession, settings):
         "candidates": [{"content": {"parts": [{"text": "Indeed, the sky is blue."}]}}]
     }
 
-    mock_session = mock_session_instance = (
-        MockClientSession.return_value.__aenter__.return_value
-    )
+    mock_session = MockClientSession.return_value.__aenter__.return_value
     mock_session.post.return_value.__aenter__.return_value = mock_response
 
     # Act

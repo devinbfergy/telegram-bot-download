@@ -1,5 +1,4 @@
 import logging
-import os
 
 import aiohttp
 from telegram import Update
@@ -7,7 +6,6 @@ from telegram.ext import ContextTypes
 
 from app.config.settings import AppSettings
 from app.config.strings import MESSAGES
-from app.utils.validation import extract_url
 
 logger = logging.getLogger(__name__)
 
