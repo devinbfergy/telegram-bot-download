@@ -1,5 +1,6 @@
 import pytest
-from ..media.detectors import is_image_url
+from app.media.detectors import is_image_url
+
 
 def test_is_image_url_facebook():
     url = "https://www.facebook.com/share/1JSWz8bWur/?mibextid=wwXIfr"

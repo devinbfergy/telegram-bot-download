@@ -5,8 +5,19 @@ import pytest
 from telegram import Update
 from telegram.ext import Application, ContextTypes
 
-from ..config.settings import AppSettings
-from ..telegram_bot.handlers import handle_bad_bot_reply, handle_gork_is_this_real, handle_message, start
+from app.config.settings import AppSettings
+from app.telegram_bot.handlers import (
+    handle_bad_bot_reply,
+    handle_gork_is_this_real,
+    handle_message,
+    start,
+)
+
+
+@pytest.fixture
+def settings():
+    """Provide a default AppSettings instance for tests."""
+    return AppSettings()
 
 
 @pytest.mark.asyncio
@@ -54,10 +65,11 @@ async def test_handle_message_with_video_url(MockDownloader):
     mock_downloader_instance = MockDownloader.return_value
     mock_downloader_instance.download_and_send_media = AsyncMock()
 
-    with patch("app.telegram_bot.handlers.is_video_url", return_value=True), \
-         patch("app.telegram_bot.handlers.is_image_url", return_value=False), \
-         patch("app.telegram_bot.handlers.is_tiktok_photo_url", return_value=False):
-
+    with (
+        patch("app.telegram_bot.handlers.is_video_url", return_value=True),
+        patch("app.telegram_bot.handlers.is_image_url", return_value=False),
+        patch("app.telegram_bot.handlers.is_tiktok_photo_url", return_value=False),
+    ):
         # Act
         await handle_message(update, context)
 

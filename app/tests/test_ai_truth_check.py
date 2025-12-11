@@ -4,9 +4,9 @@ import pytest
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from ..config.settings import AppSettings
-from ..features.ai_truth_check import ai_truth_check
-from ..config.strings import MESSAGES
+from app.config.settings import AppSettings
+from app.features.ai_truth_check import ai_truth_check
+from app.config.strings import MESSAGES
 
 
 @pytest.fixture
@@ -31,7 +31,9 @@ async def test_ai_truth_check_success(MockClientSession, settings):
         "candidates": [{"content": {"parts": [{"text": "Indeed, the sky is blue."}]}}]
     }
 
-    mock_session = mock_session_instance = MockClientSession.return_value.__aenter__.return_value
+    mock_session = mock_session_instance = (
+        MockClientSession.return_value.__aenter__.return_value
+    )
     mock_session.post.return_value.__aenter__.return_value = mock_response
 
     # Act
