@@ -68,7 +68,15 @@ def create_slideshow_from_media(
                 target_path.write_bytes(img_path.read_bytes())
             else:
                 # Convert non-JPEG images to JPEG using FFmpeg
-                convert_cmd = ["ffmpeg", "-y", "-v", "error", "-i", str(img_path), str(target_path)]
+                convert_cmd = [
+                    "ffmpeg",
+                    "-y",
+                    "-v",
+                    "error",
+                    "-i",
+                    str(img_path),
+                    str(target_path),
+                ]
                 subprocess.run(convert_cmd, check=True, timeout=30)
             normalized_image_paths.append(target_path)
 
@@ -121,6 +129,9 @@ def create_slideshow_from_media(
 
     except subprocess.CalledProcessError as e:
         logger.error(f"FFmpeg command failed: {e.cmd} with output: {e.stderr}")
+        return False
+    except subprocess.TimeoutExpired as te:
+        logger.error(f"FFmpeg command timed out: {te}")
         return False
     except Exception as e:
         logger.error(f"An unexpected error occurred during slideshow creation: {e}")

@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import shutil
 import subprocess
@@ -9,8 +8,10 @@ from telegram import InputMediaPhoto, Message
 
 from app.config.settings import AppSettings
 from app.config.strings import MESSAGES
+from app.core.exceptions import ExtractionFailed, SizeLimitExceeded
 from app.media.slideshow import create_slideshow_from_media
 from app.telegram_bot.status_messenger import StatusMessenger
+from app.utils.concurrency import run_blocking
 from app.utils.filesystem import create_temp_dir
 
 logger = logging.getLogger(__name__)
@@ -48,7 +49,7 @@ async def download_and_send_with_gallery_dl(
         await status_messenger.edit_message(f"🧩 Using gallery-dl for {purpose}...")
 
         # Run gallery-dl in a separate thread to avoid blocking asyncio loop
-        await asyncio.to_thread(_run_gallery_dl_subprocess, url, temp_dir)
+        await run_blocking(_run_gallery_dl_subprocess, url, temp_dir)
 
         all_files = list(temp_dir.rglob("*.*"))
         if not all_files:
@@ -56,15 +57,23 @@ async def download_and_send_with_gallery_dl(
             return False
 
         # Categorize files
-        videos = [f for f in all_files if f.suffix.lower() in settings.media_video_extensions]
-        images = [f for f in all_files if f.suffix.lower() in settings.media_image_extensions]
-        audios = [f for f in all_files if f.suffix.lower() in settings.media_audio_extensions]
+        videos = [
+            f for f in all_files if f.suffix.lower() in settings.media_video_extensions
+        ]
+        images = [
+            f for f in all_files if f.suffix.lower() in settings.media_image_extensions
+        ]
+        audios = [
+            f for f in all_files if f.suffix.lower() in settings.media_audio_extensions
+        ]
 
         # 1. Prioritize sending a video if one is found under the size limit
         if videos:
             chosen_video = min(videos, key=lambda p: p.stat().st_size)
             if chosen_video.stat().st_size <= settings.telegram_max_video_size:
-                await status_messenger.edit_message(MESSAGES["gallery_dl_uploading_video"])
+                await status_messenger.edit_message(
+                    MESSAGES["gallery_dl_uploading_video"]
+                )
                 with chosen_video.open("rb") as vf:
                     await message.reply_video(
                         video=vf, supports_streaming=True, disable_notification=True
@@ -75,14 +84,19 @@ async def download_and_send_with_gallery_dl(
         if images and audios:
             slideshow_path = temp_dir / "slideshow.mp4"
             await status_messenger.edit_message(MESSAGES["slideshow_building"])
-            success = await asyncio.to_thread(
+            success = await run_blocking(
                 create_slideshow_from_media,
                 images[:60],  # Limit number of images
                 audios[0],
                 slideshow_path,
             )
-            if success and slideshow_path.stat().st_size <= settings.telegram_max_video_size:
-                await status_messenger.edit_message(MESSAGES["gallery_dl_uploading_slideshow"])
+            if (
+                success
+                and slideshow_path.stat().st_size <= settings.telegram_max_video_size
+            ):
+                await status_messenger.edit_message(
+                    MESSAGES["gallery_dl_uploading_slideshow"]
+                )
                 with slideshow_path.open("rb") as vf:
                     await message.reply_video(
                         video=vf, supports_streaming=True, disable_notification=True
@@ -93,17 +107,39 @@ async def download_and_send_with_gallery_dl(
         if images:
             await status_messenger.edit_message(MESSAGES["gallery_dl_sending_images"])
             media_group = [InputMediaPhoto(img.open("rb")) for img in images[:10]]
-            await message.reply_media_group(media=media_group, disable_notification=True)
+            await message.reply_media_group(
+                media=media_group, disable_notification=True
+            )
             for m in media_group:
-                m.media.close()
+                m.media.close()  # type: ignore[union-attr]
             return True
 
         await status_messenger.edit_message(MESSAGES["gallery_dl_no_suitable_media"])
         return False
 
+    except FileNotFoundError as fnf:
+        logger.error(f"gallery-dl binary not found: {fnf}")
+        await status_messenger.edit_message(
+            MESSAGES["gallery_dl_error"].format(error="gallery-dl not installed")
+        )
+        return False
+    except subprocess.CalledProcessError as cpe:
+        logger.error(f"gallery-dl subprocess failed for {url}: {cpe}", exc_info=True)
+        await status_messenger.edit_message(
+            MESSAGES["gallery_dl_error"].format(error="Download failed")
+        )
+        return False
+    except subprocess.TimeoutExpired as te:
+        logger.error(f"gallery-dl timed out for {url}: {te}")
+        await status_messenger.edit_message(
+            MESSAGES["gallery_dl_error"].format(error="Download timed out")
+        )
+        return False
     except Exception as e:
         logger.error(f"gallery-dl failed for {url}: {e}", exc_info=True)
-        await status_messenger.edit_message(MESSAGES["gallery_dl_error"].format(error=e))
+        await status_messenger.edit_message(
+            MESSAGES["gallery_dl_error"].format(error=e)
+        )
         return False
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
