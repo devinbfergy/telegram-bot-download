@@ -10,11 +10,13 @@ logger = logging.getLogger(__name__)
 
 YOUTUBE_SHORTS_PATTERN = re.compile(
     r"(?:https?://)?(?:www\.)?(?:m\.)?"
-    r"(?:youtube\.com/(?:watch\?v=|shorts/)|youtu\.be/)"
+    r"(?:youtube\.com/shorts/)"
     r"([a-zA-Z0-9_-]{11})"
 )
 TIKTOK_PHOTO_PATTERN = re.compile(r"tiktok\.com/@[^/]+/photo/\d+")
-IMAGE_EXTENSION_PATTERN = re.compile(r"\.(jpg|jpeg|png|gif|webp|bmp|tiff)$", re.IGNORECASE)
+IMAGE_EXTENSION_PATTERN = re.compile(
+    r"\.(jpg|jpeg|png|gif|webp|bmp|tiff)$", re.IGNORECASE
+)
 
 
 def is_youtube_shorts_url(url: str) -> bool:
@@ -97,8 +99,7 @@ def is_slideshow(info_dict: dict) -> bool:
         image_like_count = sum(
             1
             for e in entries
-            if e
-            and (e.get("ext") or "").lower() in ("jpg", "jpeg", "png", "webp")
+            if e and (e.get("ext") or "").lower() in ("jpg", "jpeg", "png", "webp")
         )
         return image_like_count > 0 and image_like_count == len(
             [e for e in entries if e]

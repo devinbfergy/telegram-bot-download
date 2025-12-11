@@ -22,19 +22,15 @@ RUN apt-get update && \
 # Set the working directory inside the container
 WORKDIR /app
 
-# Copy your application code into the container
-# Uncomment the line below and adjust the path if you have application code
-# COPY . /app
-
-# Example: Install Python dependencies using uv (uncomment if you have a requirements.txt)
-# This command uses uv to install dependencies from a requirements.txt file.
-# The --system flag is recommended when installing into a Docker image, as a virtual environment
-# is typically not necessary inside the container, which already provides isolation.
+# Copy dependency files first for better layer caching
 COPY pyproject.toml /app/
 COPY uv.lock /app/
-COPY main.py /app/
 COPY .python-version /app/
 RUN uv sync --upgrade --prerelease allow
+
+# Copy application code
+COPY main.py /app/
+COPY app/ /app/app/
 
 # Command to run your application (example)
 # Replace with the actual command to start your application
