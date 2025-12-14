@@ -45,19 +45,20 @@ def register(application: Application) -> Application:
         )
     )
 
-    # General message handler - processes URLs (MUST come before good_bot handler!)
+    # General message handler - processes URLs
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.handle_message)
     )
     logger.info("Registered handle_message handler")
 
     # Good bot handler - handles "good bot" from @McClintock96 (doesn't require reply)
-    # NOTE: This must come AFTER handle_message since they have the same filter
+    # Put in group 1 so it always runs even if handle_message processes the message
     application.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
             handlers.handle_good_bot_reply,
-        )
+        ),
+        group=1,
     )
 
     logger.info(f"Total handler groups: {len(application.handlers)}")
