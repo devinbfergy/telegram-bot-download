@@ -83,8 +83,16 @@ async def handle_bad_bot_reply(
     """
     logger.info(f"handle_bad_bot_reply called with update: {update.update_id}")
 
-    if not update.message or not update.message.reply_to_message:
-        logger.info("handle_bad_bot_reply: No message or no reply, returning")
+    if not update.message:
+        logger.info("handle_bad_bot_reply: No message, returning")
+        return
+
+    logger.info(
+        f"handle_bad_bot_reply: Has reply_to_message: {update.message.reply_to_message is not None}"
+    )
+
+    if not update.message.reply_to_message:
+        logger.info("handle_bad_bot_reply: No reply, returning")
         return
 
     logger.info(f"handle_bad_bot_reply: Message text: {update.message.text}")

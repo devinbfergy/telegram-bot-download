@@ -67,5 +67,12 @@ def register(application: Application) -> Application:
     logger.info(f"Total handler groups: {len(application.handlers)}")
     for group_id, handler_list in application.handlers.items():
         logger.info(f"  Group {group_id}: {len(handler_list)} handlers")
+        for i, h in enumerate(handler_list):
+            handler_name = (
+                getattr(h.callback, "__name__", str(h.callback))
+                if hasattr(h, "callback")
+                else str(h)
+            )
+            logger.info(f"    [{i}] {type(h).__name__}: {handler_name}")
 
     return application
