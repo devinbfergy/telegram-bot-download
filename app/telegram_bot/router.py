@@ -10,6 +10,11 @@ if TYPE_CHECKING:
     from telegram.ext import Application
 
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 def register(application: Application) -> Application:
     """
     Register all handlers with the Telegram application.
@@ -20,8 +25,11 @@ def register(application: Application) -> Application:
     Returns:
         The application with handlers registered.
     """
+    logger.info("Registering handlers...")
+
     # Command handlers
     application.add_handler(CommandHandler("start", handlers.start))
+    logger.info("Registered /start command handler")
 
     # Reply message handlers - check for specific patterns in replies
     application.add_handler(
@@ -49,5 +57,10 @@ def register(application: Application) -> Application:
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.handle_message)
     )
+    logger.info("Registered handle_message handler")
+
+    logger.info(f"Total handler groups: {len(application.handlers)}")
+    for group_id, handler_list in application.handlers.items():
+        logger.info(f"  Group {group_id}: {len(handler_list)} handlers")
 
     return application

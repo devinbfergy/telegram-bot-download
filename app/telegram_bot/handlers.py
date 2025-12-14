@@ -25,11 +25,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     """
     Handles incoming text messages, extracts a URL, and attempts to download the media.
     """
+    logger.info(f"handle_message called with update: {update.update_id}")
+
     if not update.message or not update.message.text:
+        logger.info("No message or text, returning")
         return
 
+    logger.info(f"Message text: {update.message.text}")
     url = extract_url(update.message.text)
+    logger.info(f"Extracted URL: {url}")
+
     if not url:
+        logger.info("No URL found, returning")
         return
 
     settings: AppSettings = context.application.settings["app_settings"]
