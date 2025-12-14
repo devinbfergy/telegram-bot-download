@@ -34,4 +34,7 @@ MESSAGES = {
     "error_ai_api_request_failed": "❌ Failed to get a response from the AI. Please try again later.",
     "error_video_too_large": "❌ Error: The video is too large ({file_size_mb:.2f}MB). Telegram's limit for bot uploads is {limit_mb}MB.",
     "unsupported_url": "Unsupported or invalid URL.",
+    # Good bot catgirl feature
+    "error_catgirl_features_not_configured": "❌ Catgirl features are not configured (missing Gemini API key).",
+    "error_catgirl_api_request_failed": "❌ Failed to get catgirl response. Nya~ something went wrong!",
 }

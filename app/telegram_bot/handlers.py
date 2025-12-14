@@ -6,6 +6,7 @@ from telegram.ext import ContextTypes
 from app.config.settings import AppSettings
 from app.config.strings import MESSAGES
 from app.features.ai_truth_check import ai_truth_check
+from app.features.good_bot_catgirl import good_bot_catgirl
 from app.features.reprocess_bad_bot import reprocess_bad_bot
 from app.media.downloader import Downloader
 from app.telegram_bot.status_messenger import StatusMessenger
@@ -40,7 +41,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     try:
         if is_tiktok_photo_url(url):
             await status_messenger.send_message(MESSAGES["tiktok_photo_alert"])
-        elif is_video_url(url) or is_image_url(url) or "snapchat" in url or "facebook" in url:
+        elif (
+            is_video_url(url)
+            or is_image_url(url)
+            or "snapchat" in url
+            or "facebook" in url
+        ):
             await status_messenger.send_message(MESSAGES["link_alert"])
         else:
             logger.info(f"Ignoring non-media URL: {url}")
@@ -51,15 +57,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     except Exception as e:
         # The downloader class should handle its own errors and status messages.
         # This is a final fallback.
-        logger.error(f"Unhandled error in handle_message for URL {url}: {e}", exc_info=True)
+        logger.error(
+            f"Unhandled error in handle_message for URL {url}: {e}", exc_info=True
+        )
         await status_messenger.send_message(MESSAGES["error_generic"])
     finally:
         # Ensure the status message is deleted unless an error occurred that we want to persist
         if status_messenger.has_active_message():
-             await status_messenger.delete_status_message()
+            await status_messenger.delete_status_message()
 
 
-async def handle_bad_bot_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_bad_bot_reply(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
     """
     Handles replies with 'bad bot' to a video message.
     """
@@ -73,7 +83,25 @@ async def handle_bad_bot_reply(update: Update, context: ContextTypes.DEFAULT_TYP
     await reprocess_bad_bot(update, context, settings)
 
 
-async def handle_gork_is_this_real(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_good_bot_reply(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """
+    Handles 'good bot' messages from @McClintock96.
+    """
+    if not update.message or not update.message.text:
+        return
+
+    if "good bot" not in update.message.text.lower():
+        return
+
+    settings: AppSettings = context.application.settings["app_settings"]
+    await good_bot_catgirl(update, context, settings)
+
+
+async def handle_gork_is_this_real(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
     """
     Handles replies with '@gork is this real'.
     """

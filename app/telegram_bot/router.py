@@ -37,6 +37,14 @@ def register(application: Application) -> Application:
         )
     )
 
+    # Good bot handler - handles "good bot" from @McClintock96 (doesn't require reply)
+    application.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            handlers.handle_good_bot_reply,
+        )
+    )
+
     # General message handler - processes URLs
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.handle_message)
