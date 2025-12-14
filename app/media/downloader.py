@@ -29,37 +29,37 @@ class Downloader:
         self.settings = settings
         self.status_messenger = status_messenger
 
-    async def download_and_send_media(self, url: str, message: Message) -> None:
+    async def download_and_send_media(
+        self, url: str, message: Message, profile_name: str | None = None
+    ) -> None:
         """
         Downloads a video from a URL using yt-dlp, providing status updates to the user,
         and sends the final video file back.
+
+        Args:
+            url: The URL to download media from.
+            message: The Telegram message to reply to.
+            profile_name: Optional profile name to use. If not provided, auto-detected.
         """
         temp_dir = create_temp_dir()
         video_path: Path | None = None
 
         try:
-            is_shorts = is_youtube_shorts_url(url)
-            is_instagram = is_instagram_reel_url(url)
+            # Auto-detect profile if not provided
+            if profile_name is None:
+                is_shorts = is_youtube_shorts_url(url)
+                is_instagram = is_instagram_reel_url(url)
 
-            if is_shorts:
-                profile_name = "shorts"
-            elif is_instagram:
-                profile_name = "instagram"
-            else:
-                profile_name = "default"
+                if is_shorts:
+                    profile_name = "shorts"
+                elif is_instagram:
+                    profile_name = "instagram"
+                else:
+                    profile_name = "default"
 
             ydl_opts = PROFILES[profile_name]()
 
-            if is_shorts:
-                logger.info(
-                    f"YouTube Shorts detected: {url}, using '{profile_name}' profile"
-                )
-            elif is_instagram:
-                logger.info(
-                    f"Instagram reel detected: {url}, using '{profile_name}' profile"
-                )
-            else:
-                logger.debug(f"Using '{profile_name}' profile for: {url}")
+            logger.info(f"Using '{profile_name}' profile for: {url}")
 
             # The template from ytdlp_profiles.py is just a filename, not a path
             # We need to join it with our temp_dir
