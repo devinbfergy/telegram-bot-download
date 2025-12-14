@@ -79,17 +79,24 @@ async def good_bot_catgirl(
             context=conversation_context, username=username
         )
 
+    # Build URL with API key as query parameter
+    api_url = f"{GEMINI_API_URL}?key={settings.gemini_api_key}"
+
     headers = {
         "Content-Type": "application/json",
-        "X-goog-api-key": settings.gemini_api_key,
     }
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
 
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.post(
-                GEMINI_API_URL, headers=headers, json=payload
-            ) as response:
+            async with session.post(api_url, headers=headers, json=payload) as response:
+                if response.status != 200:
+                    error_text = await response.text()
+                    logger.error(
+                        f"Gemini API error (status {response.status}): {error_text}"
+                    )
+                    logger.error(f"Request payload: {payload}")
+                    logger.error(f"Request headers: {headers}")
                 response.raise_for_status()
                 data = await response.json()
 

@@ -9,9 +9,7 @@ from app.config.strings import MESSAGES
 
 logger = logging.getLogger(__name__)
 
-GEMINI_API_URL = (
-    "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
-)
+GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
 
 SYSTEM_PROMPT_TEMPLATE = """
 You are a truth-telling bot named Gork. When a user asks "@gork is this real", you analyze the provided statement to determine if it is fact or fiction.
@@ -56,17 +54,18 @@ async def ai_truth_check(
         return
 
     prompt = SYSTEM_PROMPT_TEMPLATE.format(original_text=original_text)
+
+    # Build URL with API key as query parameter
+    api_url = f"{GEMINI_API_URL}?key={settings.gemini_api_key}"
+
     headers = {
         "Content-Type": "application/json",
-        "X-goog-api-key": settings.gemini_api_key,
     }
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
 
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.post(
-                GEMINI_API_URL, headers=headers, json=payload
-            ) as response:
+            async with session.post(api_url, headers=headers, json=payload) as response:
                 response.raise_for_status()
                 data = await response.json()
 
@@ -85,7 +84,9 @@ async def ai_truth_check(
             disable_notification=True,
         )
     except Exception as e:
-        logger.error(f"An unexpected error occurred in AI truth check: {e}", exc_info=True)
+        logger.error(
+            f"An unexpected error occurred in AI truth check: {e}", exc_info=True
+        )
         await update.message.reply_text(
             MESSAGES["error_generic"], disable_notification=True
         )
