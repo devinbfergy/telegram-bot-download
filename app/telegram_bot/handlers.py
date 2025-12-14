@@ -97,11 +97,18 @@ async def handle_good_bot_reply(
     """
     Handles 'good bot' messages from @McClintock96.
     """
+    logger.info(f"handle_good_bot_reply called with update: {update.update_id}")
+
     if not update.message or not update.message.text:
+        logger.info("handle_good_bot_reply: No message or text, returning")
         return
 
+    logger.info(f"handle_good_bot_reply: Message text: {update.message.text}")
     if "good bot" not in update.message.text.lower():
+        logger.info("handle_good_bot_reply: Not a 'good bot' message, returning")
         return
+
+    logger.info("handle_good_bot_reply: Processing 'good bot' message")
 
     settings: AppSettings = context.application.settings["app_settings"]
     await good_bot_catgirl(update, context, settings)
