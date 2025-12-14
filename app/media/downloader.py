@@ -34,8 +34,17 @@ class Downloader:
         video_path: Path | None = None
 
         try:
-            profile_name = "shorts" if is_youtube_shorts_url(url) else "default"
+            is_shorts = is_youtube_shorts_url(url)
+            profile_name = "shorts" if is_shorts else "default"
             ydl_opts = PROFILES[profile_name]()
+
+            if is_shorts:
+                logger.info(
+                    f"YouTube Shorts detected: {url}, using '{profile_name}' profile"
+                )
+            else:
+                logger.debug(f"Using '{profile_name}' profile for: {url}")
+
             # The template from ytdlp_profiles.py is just a filename, not a path
             # We need to join it with our temp_dir
             ydl_opts["outtmpl"] = str(temp_dir / os.path.basename(ydl_opts["outtmpl"]))

@@ -55,12 +55,25 @@ def get_default_profile() -> Dict[str, Any]:
 def get_shorts_profile() -> Dict[str, Any]:
     """
     Optimized profile for YouTube Shorts and similar short-form videos.
-    - Simplified post-processing for speed.
+    - Prefers higher quality up to 1080p (Shorts are typically vertical 9:16)
+    - Falls back gracefully to any available format
+    - Simplified post-processing for speed
     """
     profile = _BASE_PROFILE.copy()
     profile.update(
         {
-            "format": "bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+            # Format selection priority:
+            # 1. Try best mp4 video (<=1080p) + best m4a audio
+            # 2. Fall back to best mp4 with video+audio
+            # 3. Fall back to any best format with video+audio
+            # 4. Last resort: any best format
+            "format": (
+                "bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/"
+                "bestvideo[height<=1080]+bestaudio/"
+                "best[ext=mp4][height<=1080]/"
+                "best[ext=mp4]/"
+                "best"
+            ),
             "postprocessors": [
                 {
                     "key": "FFmpegVideoConvertor",
