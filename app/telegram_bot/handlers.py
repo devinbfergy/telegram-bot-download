@@ -40,8 +40,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     settings: AppSettings = context.application.settings["app_settings"]
+    message_thread_id = update.message.message_thread_id if update.message else None
     status_messenger = StatusMessenger(
-        bot=context.bot, chat_id=update.effective_chat.id, settings=settings
+        bot=context.bot,
+        chat_id=update.effective_chat.id,
+        settings=settings,
+        message_thread_id=message_thread_id,
     )
     downloader = Downloader(settings, status_messenger)
 

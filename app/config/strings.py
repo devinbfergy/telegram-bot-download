@@ -27,6 +27,9 @@ MESSAGES = {
     "gallery_dl_sending_images": "⬆️ Sending images (gallery-dl)...",
     "gallery_dl_no_suitable_media": "❌ No suitable media found to send.",
     "gallery_dl_error": "❌ gallery-dl error: {error}",
+    # Bad bot reprocessing
+    "reprocessing": "🔄 Reprocessing with better quality...",
+    "reprocessing_no_url": "❌ Could not find URL in the original message.",
     # Generic errors
     "error_generic": "❌ An unexpected error occurred. Please try again later.",
     "error_no_text": "❌ Could not find any text in the original message.",

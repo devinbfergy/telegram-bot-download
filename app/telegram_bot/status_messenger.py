@@ -14,17 +14,27 @@ log = get_logger(__name__)
 class StatusMessenger:
     """Manages status messages for long-running operations."""
 
-    def __init__(self, bot, chat_id: int, settings: AppSettings):  # noqa: ANN001
+    def __init__(
+        self,
+        bot,  # noqa: ANN001
+        chat_id: int,
+        settings: AppSettings,
+        message_thread_id: int | None = None,
+    ):
         self.bot = bot
         self.chat_id = chat_id
         self.settings = settings
+        self.message_thread_id = message_thread_id
         self._message: Message | None = None
 
     async def send_message(self, text: str) -> None:
         """Send a new status message."""
         try:
             self._message = await self.bot.send_message(
-                chat_id=self.chat_id, text=text, disable_notification=True
+                chat_id=self.chat_id,
+                text=text,
+                message_thread_id=self.message_thread_id,
+                disable_notification=True,
             )
         except Exception:  # noqa: BLE001
             log.debug("Failed to send status message")
@@ -36,7 +46,10 @@ class StatusMessenger:
                 await self.send_message(text)
             else:
                 await self.bot.edit_message_text(
-                    chat_id=self.chat_id, message_id=self._message.message_id, text=text
+                    chat_id=self.chat_id,
+                    message_id=self._message.message_id,
+                    text=text,
+                    message_thread_id=self.message_thread_id,
                 )
         except Exception:  # noqa: BLE001
             log.debug("Failed to edit status message")
