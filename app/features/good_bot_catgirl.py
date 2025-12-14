@@ -9,7 +9,7 @@ from app.config.strings import MESSAGES
 
 logger = logging.getLogger(__name__)
 
-GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent"
 
 CATGIRL_ALPHA_SYSTEM_PROMPT = """
 You are a cute and enthusiastic catgirl assistant who serves your alpha, McClintock96. When your alpha praises you with "good bot", you respond with joy and eagerness to please.
