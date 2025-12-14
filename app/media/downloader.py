@@ -47,7 +47,9 @@ class Downloader:
 
             # The template from ytdlp_profiles.py is just a filename, not a path
             # We need to join it with our temp_dir
-            ydl_opts["outtmpl"] = str(temp_dir / os.path.basename(ydl_opts["outtmpl"]))
+            # Save the template string before yt-dlp modifies it
+            outtmpl_str = str(temp_dir / os.path.basename(ydl_opts["outtmpl"]))
+            ydl_opts["outtmpl"] = outtmpl_str
 
             await self.status_messenger.edit_message(MESSAGES["downloading"])
 
@@ -69,13 +71,17 @@ class Downloader:
                 )
                 return
 
-            # Reconstruct the path from the info_dict and the template
-            video_path = Path(
-                ydl_opts["outtmpl"] % {"id": info_dict["id"], "ext": "mp4"}
-            )  # Assume mp4 due to merge_output_format
+            # Find the downloaded file in the temp directory
+            # Try to reconstruct the path from the saved template string
+            video_path = None
+            try:
+                video_path = Path(outtmpl_str % {"id": info_dict["id"], "ext": "mp4"})
+            except (TypeError, KeyError) as e:
+                # Template formatting failed, we'll search for the file instead
+                logger.debug(f"Could not reconstruct path from template: {e}")
 
-            # A more robust way to find the output file
-            if not video_path.exists():
+            # Search for the output file if reconstruction failed or file doesn't exist
+            if not video_path or not video_path.exists():
                 found_files = list(temp_dir.glob("*.mp4"))
                 if not found_files:
                     found_files = list(temp_dir.glob("*.*"))  # any extension
@@ -84,6 +90,7 @@ class Downloader:
                     video_path = sorted(
                         found_files, key=lambda p: p.stat().st_size, reverse=True
                     )[0]
+                    logger.debug(f"Found video file by searching: {video_path}")
                 else:
                     raise FileNotFoundError(f"Downloaded file not found in {temp_dir}")
 
@@ -96,9 +103,10 @@ class Downloader:
                 safe_cleanup(video_path)
 
                 fallback_opts = PROFILES["fallback"]()
-                fallback_opts["outtmpl"] = str(
+                fallback_outtmpl_str = str(
                     temp_dir / os.path.basename(fallback_opts["outtmpl"])
                 )
+                fallback_opts["outtmpl"] = fallback_outtmpl_str
                 info_dict = await run_blocking(
                     self._run_ytdlp_download, url, fallback_opts
                 )
@@ -108,13 +116,24 @@ class Downloader:
                         "Fallback download did not return info_dict."
                     )
 
-                video_path = Path(
-                    fallback_opts["outtmpl"] % {"id": info_dict["id"], "ext": "mp4"}
-                )
-                if not video_path.exists():
+                # Find the fallback downloaded file using the saved template
+                video_path = None
+                try:
+                    video_path = Path(
+                        fallback_outtmpl_str % {"id": info_dict["id"], "ext": "mp4"}
+                    )
+                except (TypeError, KeyError) as e:
+                    logger.debug(
+                        f"Could not reconstruct fallback path from template: {e}"
+                    )
+
+                if not video_path or not video_path.exists():
                     found_files = list(temp_dir.glob("*.mp4"))
                     if found_files:
                         video_path = found_files[0]
+                        logger.debug(
+                            f"Found fallback video file by searching: {video_path}"
+                        )
                     else:
                         raise ExtractionFailed(
                             "Fallback download also failed to produce a file."
