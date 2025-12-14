@@ -1,8 +1,8 @@
-
 from app.media.ytdlp_profiles import (
     PROFILES,
     get_default_profile,
     get_fallback_profile,
+    get_instagram_profile,
     get_shorts_profile,
     get_telegram_optimization_profile,
 )
@@ -10,7 +10,7 @@ from app.media.ytdlp_profiles import (
 
 def test_profiles_dict_contains_all_profiles():
     """Test that PROFILES dict contains all expected profile names."""
-    expected_profiles = {"default", "shorts", "fallback", "telegram"}
+    expected_profiles = {"default", "shorts", "instagram", "fallback", "telegram"}
     assert set(PROFILES.keys()) == expected_profiles
 
 

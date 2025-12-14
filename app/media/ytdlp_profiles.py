@@ -130,6 +130,50 @@ def get_fallback_profile() -> Dict[str, Any]:
     return profile
 
 
+def get_instagram_profile() -> Dict[str, Any]:
+    """
+    Optimized profile for Instagram reels and posts.
+    - Prefers pre-merged formats to avoid ffmpeg merge failures
+    - Falls back gracefully to best available quality
+    - Simplified post-processing for reliability
+    """
+    profile = _BASE_PROFILE.copy()
+    profile.update(
+        {
+            # Format selection priority for Instagram:
+            # 1. Try best pre-merged mp4 format (no merging needed)
+            # 2. Fall back to any best pre-merged format
+            # 3. Last resort: merge best video and audio if needed
+            "format": (
+                "best[ext=mp4][height<=1080]/"
+                "best[ext=mp4]/"
+                "best[height<=1080]/"
+                "bestvideo[height<=1080]+bestaudio/"
+                "best"
+            ),
+            "postprocessors": [
+                {
+                    "key": "FFmpegVideoConvertor",
+                    "preferedformat": "mp4",
+                },
+                {
+                    "key": "FFmpegMetadata",
+                    "add_metadata": True,
+                },
+            ],
+            "postprocessor_args": [
+                "-c:v",
+                "copy",
+                "-c:a",
+                "copy",
+                "-movflags",
+                "+faststart",
+            ],
+        }
+    )
+    return profile
+
+
 def get_telegram_optimization_profile() -> Dict[str, Any]:
     """
     Profile for the 'bad bot' reprocessing feature.
@@ -178,6 +222,7 @@ def get_telegram_optimization_profile() -> Dict[str, Any]:
 PROFILES = {
     "default": get_default_profile,
     "shorts": get_shorts_profile,
+    "instagram": get_instagram_profile,
     "fallback": get_fallback_profile,
     "telegram": get_telegram_optimization_profile,
 }

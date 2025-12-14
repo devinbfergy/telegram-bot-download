@@ -46,6 +46,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             or is_image_url(url)
             or "snapchat" in url
             or "facebook" in url
+            or "instagram" in url
         ):
             await status_messenger.send_message(MESSAGES["link_alert"])
         else:

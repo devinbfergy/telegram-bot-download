@@ -13,6 +13,11 @@ YOUTUBE_SHORTS_PATTERN = re.compile(
     r"(?:youtube\.com/shorts/)"
     r"([a-zA-Z0-9_-]{11})"
 )
+INSTAGRAM_REEL_PATTERN = re.compile(
+    r"(?:https?://)?(?:www\.)?(?:m\.)?"
+    r"(?:instagram\.com/(?:reel|reels|p)/)"
+    r"([a-zA-Z0-9_-]+)"
+)
 TIKTOK_PHOTO_PATTERN = re.compile(r"tiktok\.com/@[^/]+/photo/\d+")
 IMAGE_EXTENSION_PATTERN = re.compile(
     r"\.(jpg|jpeg|png|gif|webp|bmp|tiff)$", re.IGNORECASE
@@ -22,6 +27,11 @@ IMAGE_EXTENSION_PATTERN = re.compile(
 def is_youtube_shorts_url(url: str) -> bool:
     """Checks if the URL is a YouTube Shorts link."""
     return bool(YOUTUBE_SHORTS_PATTERN.match(url))
+
+
+def is_instagram_reel_url(url: str) -> bool:
+    """Checks if the URL is an Instagram reel or post link."""
+    return bool(INSTAGRAM_REEL_PATTERN.search(url))
 
 
 def is_tiktok_photo_url(url: str) -> bool:

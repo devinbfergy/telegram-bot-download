@@ -4,6 +4,7 @@ from yt_dlp.utils import DownloadError
 
 from app.media.detectors import (
     is_image_url,
+    is_instagram_reel_url,
     is_slideshow,
     is_tiktok_photo_url,
     is_video_url,
@@ -145,9 +146,22 @@ def test_is_youtube_shorts_url():
 
 
 def test_is_not_youtube_shorts_url():
-    assert not is_youtube_shorts_url("https://www.youtube.com/watch?v=abc123defgh")
-    assert not is_youtube_shorts_url("https://example.com/shorts/abc123defgh")
-    assert not is_youtube_shorts_url("https://youtu.be/abc123defgh")  # Regular videos
+    assert not is_youtube_shorts_url("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+    assert not is_youtube_shorts_url("https://youtu.be/dQw4w9WgXcQ")
+    assert not is_youtube_shorts_url("https://www.example.com/shorts/abcd1234567")
+
+
+def test_is_instagram_reel_url():
+    assert is_instagram_reel_url("https://www.instagram.com/reel/DSLJWMqDd8-/")
+    assert is_instagram_reel_url("https://instagram.com/reel/ABC123/")
+    assert is_instagram_reel_url("https://www.instagram.com/p/XYZ789/")
+    assert is_instagram_reel_url("https://m.instagram.com/reel/TEST123/")
+
+
+def test_is_not_instagram_reel_url():
+    assert not is_instagram_reel_url("https://www.youtube.com/shorts/abcd1234567")
+    assert not is_instagram_reel_url("https://www.tiktok.com/@user/video/123")
+    assert not is_instagram_reel_url("https://www.example.com/reel/abc123")
 
 
 def test_is_tiktok_photo_url():

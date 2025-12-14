@@ -9,7 +9,11 @@ from yt_dlp.utils import DownloadError as YtDlpDownloadError
 from app.config.settings import AppSettings, TELEGRAM_FILE_LIMIT_MB
 from app.config.strings import MESSAGES
 from app.core.exceptions import ExtractionFailed, SizeLimitExceeded
-from app.media.detectors import is_slideshow, is_youtube_shorts_url
+from app.media.detectors import (
+    is_slideshow,
+    is_youtube_shorts_url,
+    is_instagram_reel_url,
+)
 from app.media.gallery_dl import download_and_send_with_gallery_dl
 from app.media.inspection import detect_frozen_frames
 from app.media.ytdlp_profiles import PROFILES
@@ -35,12 +39,24 @@ class Downloader:
 
         try:
             is_shorts = is_youtube_shorts_url(url)
-            profile_name = "shorts" if is_shorts else "default"
+            is_instagram = is_instagram_reel_url(url)
+
+            if is_shorts:
+                profile_name = "shorts"
+            elif is_instagram:
+                profile_name = "instagram"
+            else:
+                profile_name = "default"
+
             ydl_opts = PROFILES[profile_name]()
 
             if is_shorts:
                 logger.info(
                     f"YouTube Shorts detected: {url}, using '{profile_name}' profile"
+                )
+            elif is_instagram:
+                logger.info(
+                    f"Instagram reel detected: {url}, using '{profile_name}' profile"
                 )
             else:
                 logger.debug(f"Using '{profile_name}' profile for: {url}")
