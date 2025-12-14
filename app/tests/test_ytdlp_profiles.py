@@ -2,7 +2,6 @@ from app.media.ytdlp_profiles import (
     PROFILES,
     get_default_profile,
     get_fallback_profile,
-    get_instagram_profile,
     get_shorts_profile,
     get_telegram_optimization_profile,
 )

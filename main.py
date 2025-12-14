@@ -40,7 +40,7 @@ async def log_all_updates(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     elif update.edited_message:
         logger.info(f"  Edited message: {update.edited_message.text}")
     elif update.channel_post:
-        logger.info(f"  Channel post")
+        logger.info("  Channel post")
     else:
         logger.info(f"  Other update type: {type(update)}")
     logger.info("=== END UPDATE ===")
@@ -72,7 +72,7 @@ def main() -> None:
 
     async def test_any_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         logger.info(
-            f"!!! TEST HANDLER CALLED - This handler just logs any text message !!!"
+            "!!! TEST HANDLER CALLED - This handler just logs any text message !!!"
         )
         logger.info(
             f"!!! Message text: {update.message.text if update.message else 'no message'}"
