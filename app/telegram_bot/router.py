@@ -32,9 +32,10 @@ def register(application: Application) -> Application:
     logger.info("Registered /start command handler")
 
     # Reply message handlers - check for specific patterns in replies
+    # Use Regex filters to only match when the specific text is present
     application.add_handler(
         MessageHandler(
-            filters.TEXT & filters.REPLY & ~filters.COMMAND,
+            filters.TEXT & filters.REPLY & filters.Regex(r"(?i)bad\s+bot"),
             handlers.handle_bad_bot_reply,
         )
     )
@@ -42,7 +43,9 @@ def register(application: Application) -> Application:
 
     application.add_handler(
         MessageHandler(
-            filters.TEXT & filters.REPLY & ~filters.COMMAND,
+            filters.TEXT
+            & filters.REPLY
+            & filters.Regex(r"(?i)@gork\s+is\s+this\s+real"),
             handlers.handle_gork_is_this_real,
         )
     )
@@ -58,7 +61,7 @@ def register(application: Application) -> Application:
     # Put in group 1 so it always runs even if handle_message processes the message
     application.add_handler(
         MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
+            filters.TEXT & filters.Regex(r"(?i)good\s+bot"),
             handlers.handle_good_bot_reply,
         ),
         group=1,

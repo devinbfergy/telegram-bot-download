@@ -16,12 +16,27 @@ async def log_all_updates(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if update.message:
         logger.info(f"  Message ID: {update.message.message_id}")
         logger.info(f"  Chat ID: {update.message.chat_id}")
+        logger.info(f"  Chat type: {update.message.chat.type}")
+        logger.info(
+            f"  Is forum/topics chat: {update.message.chat.is_forum if hasattr(update.message.chat, 'is_forum') else 'N/A'}"
+        )
+        logger.info(f"  Message thread ID: {update.message.message_thread_id}")
         logger.info(
             f"  From: {update.message.from_user.username if update.message.from_user else 'unknown'}"
         )
         logger.info(f"  Text: {update.message.text}")
-        logger.info(f"  Is TEXT: {update.message.text is not None}")
-        logger.info(f"  Is COMMAND: {'/' in (update.message.text or '')}")
+        logger.info(f"  Is reply: {update.message.reply_to_message is not None}")
+        logger.info(
+            f"  Reply to message ID: {update.message.reply_to_message.message_id if update.message.reply_to_message else 'N/A'}"
+        )
+        logger.info(
+            f"  Has entities: {update.message.entities is not None and len(update.message.entities) > 0}"
+        )
+        if update.message.entities:
+            for entity in update.message.entities:
+                logger.info(
+                    f"    Entity type: {entity.type}, offset: {entity.offset}, length: {entity.length}"
+                )
     elif update.edited_message:
         logger.info(f"  Edited message: {update.edited_message.text}")
     elif update.channel_post:
