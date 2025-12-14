@@ -81,12 +81,18 @@ async def handle_bad_bot_reply(
     """
     Handles replies with 'bad bot' to a video message.
     """
+    logger.info(f"handle_bad_bot_reply called with update: {update.update_id}")
+
     if not update.message or not update.message.reply_to_message:
+        logger.info("handle_bad_bot_reply: No message or no reply, returning")
         return
 
+    logger.info(f"handle_bad_bot_reply: Message text: {update.message.text}")
     if "bad bot" not in update.message.text.lower():
+        logger.info("handle_bad_bot_reply: Not a 'bad bot' message, returning")
         return
 
+    logger.info("handle_bad_bot_reply: Processing 'bad bot' message")
     settings: AppSettings = context.application.settings["app_settings"]
     await reprocess_bad_bot(update, context, settings)
 
@@ -120,11 +126,19 @@ async def handle_gork_is_this_real(
     """
     Handles replies with '@gork is this real'.
     """
+    logger.info(f"handle_gork_is_this_real called with update: {update.update_id}")
+
     if not update.message or not update.message.reply_to_message:
+        logger.info("handle_gork_is_this_real: No message or no reply, returning")
         return
 
+    logger.info(f"handle_gork_is_this_real: Message text: {update.message.text}")
     if "@gork is this real" not in update.message.text.lower():
+        logger.info(
+            "handle_gork_is_this_real: Not a '@gork is this real' message, returning"
+        )
         return
 
+    logger.info("handle_gork_is_this_real: Processing '@gork is this real' message")
     settings: AppSettings = context.application.settings["app_settings"]
     await ai_truth_check(update, context, settings)

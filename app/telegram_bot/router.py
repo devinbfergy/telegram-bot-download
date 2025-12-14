@@ -38,12 +38,15 @@ def register(application: Application) -> Application:
             handlers.handle_bad_bot_reply,
         )
     )
+    logger.info("Registered handle_bad_bot_reply handler")
+
     application.add_handler(
         MessageHandler(
             filters.TEXT & filters.REPLY & ~filters.COMMAND,
             handlers.handle_gork_is_this_real,
         )
     )
+    logger.info("Registered handle_gork_is_this_real handler")
 
     # General message handler - processes URLs
     application.add_handler(
