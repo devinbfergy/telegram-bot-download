@@ -4,5 +4,6 @@ from typing import Callable, TypeVar
 
 T = TypeVar("T")
 
+
 async def run_blocking(fn: Callable[..., T], *args, **kwargs) -> T:
     return await asyncio.to_thread(fn, *args, **kwargs)

@@ -4,6 +4,7 @@ from pathlib import Path
 import shutil
 import tempfile
 
+
 @contextmanager
 def temp_workspace(prefix: str = "work_"):
     path = Path(tempfile.mkdtemp(prefix=prefix))
@@ -12,9 +13,11 @@ def temp_workspace(prefix: str = "work_"):
     finally:
         shutil.rmtree(path, ignore_errors=True)
 
+
 def create_temp_dir(prefix: str = "work_") -> Path:
     """Creates a temporary directory and returns its Path."""
     return Path(tempfile.mkdtemp(prefix=prefix))
+
 
 def safe_cleanup(path: Path) -> None:
     """Safely removes files or directories, handling missing files gracefully."""
@@ -25,6 +28,7 @@ def safe_cleanup(path: Path) -> None:
             shutil.rmtree(path, ignore_errors=True)
     except Exception:
         pass
+
 
 def safe_unlink(p: Path):
     try:

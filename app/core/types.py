@@ -3,12 +3,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from enum import Enum, auto
 
+
 class MediaKind(Enum):
     VIDEO = auto()
     IMAGE = auto()
     ALBUM = auto()
     SLIDESHOW = auto()
     OTHER = auto()
+
 
 @dataclass(slots=True)
 class DownloadResult:

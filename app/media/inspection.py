@@ -22,7 +22,7 @@ def _frame_hash(frame) -> int:  # simple average hash
     img = img.resize((8, 8))
     pixels = list(img.getdata())
     avg = mean(pixels)
-    bits = ''.join('1' if p > avg else '0' for p in pixels)
+    bits = "".join("1" if p > avg else "0" for p in pixels)
     return int(bits, 2)
 
 
