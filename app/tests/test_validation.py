@@ -3,7 +3,13 @@
 import pytest
 
 from app.core.exceptions import UnsupportedURLError, SizeLimitExceeded
-from app.utils.validation import extract_url, validate_url, enforce_size_limit
+from app.utils.validation import (
+    extract_url,
+    validate_url,
+    enforce_size_limit,
+    truncate_caption,
+    TELEGRAM_CAPTION_LIMIT,
+)
 
 
 def test_extract_url_basic():
@@ -84,3 +90,52 @@ def test_enforce_size_limit_zero():
 def test_enforce_size_limit_negative():
     # Negative sizes should not raise (invalid input but not over limit)
     enforce_size_limit(-1)  # Should not raise
+
+
+# Tests for truncate_caption
+
+
+def test_truncate_caption_none():
+    assert truncate_caption(None) == ""
+
+
+def test_truncate_caption_empty():
+    assert truncate_caption("") == ""
+
+
+def test_truncate_caption_whitespace():
+    assert truncate_caption("   ") == ""
+
+
+def test_truncate_caption_short():
+    text = "Short caption"
+    assert truncate_caption(text) == text
+
+
+def test_truncate_caption_at_limit():
+    text = "a" * TELEGRAM_CAPTION_LIMIT
+    assert truncate_caption(text) == text
+
+
+def test_truncate_caption_over_limit():
+    text = "a" * (TELEGRAM_CAPTION_LIMIT + 100)
+    result = truncate_caption(text)
+    assert len(result) <= TELEGRAM_CAPTION_LIMIT
+    assert result.endswith("...")
+
+
+def test_truncate_caption_preserves_words():
+    # Create text just over the limit with words
+    words = "word " * 300  # About 1500 chars
+    result = truncate_caption(words)
+    assert len(result) <= TELEGRAM_CAPTION_LIMIT
+    assert result.endswith("...")
+    # Should not cut in middle of a word
+    assert not result[:-3].endswith("wor")
+
+
+def test_truncate_caption_custom_limit():
+    text = "This is a longer caption that should be truncated"
+    result = truncate_caption(text, max_length=20)
+    assert len(result) <= 20
+    assert result.endswith("...")

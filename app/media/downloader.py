@@ -20,6 +20,7 @@ from app.media.ytdlp_profiles import PROFILES
 from app.telegram_bot.status_messenger import StatusMessenger
 from app.utils.concurrency import run_blocking
 from app.utils.filesystem import create_temp_dir, safe_cleanup
+from app.utils.validation import truncate_caption
 
 logger = logging.getLogger(__name__)
 
@@ -170,9 +171,14 @@ class Downloader:
 
             # --- Uploading ---
             await self.status_messenger.edit_message(MESSAGES["uploading"])
+
+            # Extract caption from video description
+            caption = truncate_caption(info_dict.get("description"))
+
             with video_path.open("rb") as video_file:
                 await message.reply_video(
                     video=video_file,
+                    caption=caption if caption else None,
                     supports_streaming=True,
                     read_timeout=self.settings.telegram_read_timeout,
                     write_timeout=self.settings.telegram_write_timeout,
