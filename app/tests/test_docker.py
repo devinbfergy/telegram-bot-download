@@ -1,14 +1,27 @@
 """Integration tests for Docker container."""
 
-import time
 from pathlib import Path
 
 import pytest
 
 try:
-    from testcontainers.core.container import DockerContainer  # type: ignore[import-untyped]
+    from testcontainers.core.container import DockerContainer
+    from testcontainers.core.image import DockerImage
+
+    TESTCONTAINERS_AVAILABLE = True
 except ImportError:
+    TESTCONTAINERS_AVAILABLE = False
     DockerContainer = None  # type: ignore[assignment,misc]
+    DockerImage = None  # type: ignore[assignment,misc]
+
+
+def docker_available() -> bool:
+    """Check if Docker is available."""
+    if not TESTCONTAINERS_AVAILABLE:
+        return False
+    if not Path("/var/run/docker.sock").exists():
+        return False
+    return True
 
 
 @pytest.fixture(scope="module")
@@ -21,6 +34,22 @@ def dockerfile_path():
 def project_root():
     """Get the project root directory."""
     return Path(__file__).parent.parent.parent
+
+
+@pytest.fixture(scope="module")
+def built_image(project_root):
+    """Build the Docker image once for all tests that need it."""
+    if not docker_available():
+        pytest.skip("Docker not available")
+
+    image = DockerImage(
+        path=str(project_root),
+        tag="telegram-bot-test:latest",
+        clean_up=True,
+    )
+    image.build()
+    yield str(image)
+    image.remove()
 
 
 def test_dockerfile_exists(dockerfile_path):
@@ -52,134 +81,65 @@ def test_dockerfile_has_entrypoint(dockerfile_path):
     assert "CMD" in content or "ENTRYPOINT" in content
 
 
-@pytest.mark.skipif(
-    not Path("/var/run/docker.sock").exists(), reason="Docker not available"
-)
-def test_docker_image_builds(project_root):
+@pytest.mark.skipif(not docker_available(), reason="Docker not available")
+def test_docker_image_builds(built_image):
     """Test that Docker image builds successfully."""
-    container = None
-    try:
-        # Create container from Dockerfile
-        container = DockerContainer(path=str(project_root)).with_build_args()
-
-        # Build the image (with_exposed_ports triggers build)
-        container.with_exposed_ports(8080)
-
-        # If we get here without exception, build succeeded
-        assert True
-    except Exception as e:
-        pytest.skip(f"Docker test skipped: {e}")
-    finally:
-        if container:
-            try:
-                container.stop()
-            except Exception:
-                pass
+    assert built_image is not None
+    assert "telegram-bot-test" in built_image
 
 
-@pytest.mark.skipif(
-    not Path("/var/run/docker.sock").exists(), reason="Docker not available"
-)
-def test_docker_container_has_python(project_root):
+@pytest.mark.skipif(not docker_available(), reason="Docker not available")
+def test_docker_container_has_python(built_image):
     """Test that the Docker container has Python 3.12 installed."""
-    container = None
+    container = DockerContainer(built_image).with_command("sleep infinity")
+    container.start()
     try:
-        container = DockerContainer(path=str(project_root)).with_command(
-            "python --version"
-        )
-        container.start()
-
-        # Give container time to execute command
-        time.sleep(2)
-
-        logs = container.get_logs()[0].decode("utf-8")
-        assert "Python 3.12" in logs
-    except Exception as e:
-        pytest.skip(f"Docker test skipped: {e}")
+        result = container.exec("python --version")
+        assert result.exit_code == 0
+        assert "Python 3.12" in result.output.decode("utf-8")
     finally:
-        if container:
-            try:
-                container.stop()
-            except Exception:
-                pass
+        container.stop()
 
 
-@pytest.mark.skipif(
-    not Path("/var/run/docker.sock").exists(), reason="Docker not available"
-)
-def test_docker_container_has_ffmpeg(project_root):
+@pytest.mark.skipif(not docker_available(), reason="Docker not available")
+def test_docker_container_has_ffmpeg(built_image):
     """Test that the Docker container has FFmpeg installed."""
-    container = None
+    container = DockerContainer(built_image).with_command("sleep infinity")
+    container.start()
     try:
-        container = DockerContainer(path=str(project_root)).with_command(
-            "ffmpeg -version"
-        )
-        container.start()
-
-        # Give container time to execute command
-        time.sleep(2)
-
-        logs = container.get_logs()[0].decode("utf-8")
-        assert "ffmpeg version" in logs.lower()
-    except Exception as e:
-        pytest.skip(f"Docker test skipped: {e}")
+        result = container.exec("ffmpeg -version")
+        assert result.exit_code == 0
+        assert "ffmpeg version" in result.output.decode("utf-8").lower()
     finally:
-        if container:
-            try:
-                container.stop()
-            except Exception:
-                pass
+        container.stop()
 
 
-@pytest.mark.skipif(
-    not Path("/var/run/docker.sock").exists(), reason="Docker not available"
-)
-def test_docker_container_has_uv(project_root):
+@pytest.mark.skipif(not docker_available(), reason="Docker not available")
+def test_docker_container_has_uv(built_image):
     """Test that the Docker container has uv installed."""
-    container = None
+    container = DockerContainer(built_image).with_command("sleep infinity")
+    container.start()
     try:
-        container = DockerContainer(path=str(project_root)).with_command("uv --version")
-        container.start()
-
-        # Give container time to execute command
-        time.sleep(2)
-
-        logs = container.get_logs()[0].decode("utf-8")
-        assert "uv" in logs.lower()
-    except Exception as e:
-        pytest.skip(f"Docker test skipped: {e}")
+        result = container.exec("uv --version")
+        assert result.exit_code == 0
+        assert "uv" in result.output.decode("utf-8").lower()
     finally:
-        if container:
-            try:
-                container.stop()
-            except Exception:
-                pass
+        container.stop()
 
 
-@pytest.mark.skipif(
-    not Path("/var/run/docker.sock").exists(), reason="Docker not available"
-)
-def test_docker_container_has_app_code(project_root):
+@pytest.mark.skipif(not docker_available(), reason="Docker not available")
+def test_docker_container_has_app_code(built_image):
     """Test that the Docker container has the app code."""
-    container = None
+    container = DockerContainer(built_image).with_command("sleep infinity")
+    container.start()
     try:
-        container = DockerContainer(path=str(project_root)).with_command("ls -la /app/")
-        container.start()
-
-        # Give container time to execute command
-        time.sleep(2)
-
-        logs = container.get_logs()[0].decode("utf-8")
-        assert "main.py" in logs
-        assert "app" in logs  # app directory should exist
-    except Exception as e:
-        pytest.skip(f"Docker test skipped: {e}")
+        result = container.exec("ls -la /app/")
+        assert result.exit_code == 0
+        output_str = result.output.decode("utf-8")
+        assert "main.py" in output_str
+        assert "app" in output_str
     finally:
-        if container:
-            try:
-                container.stop()
-            except Exception:
-                pass
+        container.stop()
 
 
 def test_dockerfile_workdir_is_app(dockerfile_path):
