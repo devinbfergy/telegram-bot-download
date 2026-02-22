@@ -5,6 +5,7 @@ import sys
 from datetime import datetime
 from app.config import settings
 
+
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:  # type: ignore[override]
         payload = {
@@ -17,9 +18,11 @@ class JsonFormatter(logging.Formatter):
             payload["exc_info"] = self.formatException(record.exc_info)
         return json.dumps(payload, ensure_ascii=False)
 
+
 _DEF_FORMAT = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 
 _configured = False
+
 
 def setup_logging(level: str | None = None, json_mode: bool | None = None) -> None:
     global _configured
@@ -37,5 +40,6 @@ def setup_logging(level: str | None = None, json_mode: bool | None = None) -> No
     root.handlers.clear()
     root.addHandler(handler)
     _configured = True
+
 
 get_logger = logging.getLogger
