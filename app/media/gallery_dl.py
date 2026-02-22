@@ -1,3 +1,4 @@
+import json
 import logging
 import shutil
 import subprocess
@@ -11,6 +12,7 @@ from app.media.slideshow import create_slideshow_from_media
 from app.telegram_bot.status_messenger import StatusMessenger
 from app.utils.concurrency import run_blocking
 from app.utils.filesystem import create_temp_dir
+from app.utils.validation import truncate_caption
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +58,7 @@ async def download_and_send_with_gallery_dl(
             await status_messenger.edit_message(MESSAGES["gallery_dl_no_media"])
             return False
 
-        # Categorize files
+        # Categorize files (exclude JSON metadata files)
         videos = [
             f for f in all_files if f.suffix.lower() in settings.media_video_extensions
         ]
@@ -67,6 +69,9 @@ async def download_and_send_with_gallery_dl(
             f for f in all_files if f.suffix.lower() in settings.media_audio_extensions
         ]
 
+        # Extract caption from gallery-dl metadata
+        caption = _extract_caption_from_gallery_dl(temp_dir)
+
         # 1. Prioritize sending a video if one is found under the size limit
         if videos:
             chosen_video = min(videos, key=lambda p: p.stat().st_size)
@@ -76,7 +81,10 @@ async def download_and_send_with_gallery_dl(
                 )
                 with chosen_video.open("rb") as vf:
                     await message.reply_video(
-                        video=vf, supports_streaming=True, disable_notification=True
+                        video=vf,
+                        caption=caption if caption else None,
+                        supports_streaming=True,
+                        disable_notification=True,
                     )
                 return True
 
@@ -99,17 +107,24 @@ async def download_and_send_with_gallery_dl(
                 )
                 with slideshow_path.open("rb") as vf:
                     await message.reply_video(
-                        video=vf, supports_streaming=True, disable_notification=True
+                        video=vf,
+                        caption=caption if caption else None,
+                        supports_streaming=True,
+                        disable_notification=True,
                     )
                 return True
 
         # 3. If no video or slideshow, send images
         if images:
             await status_messenger.edit_message(MESSAGES["gallery_dl_sending_images"])
-            media_group = [
-                InputMediaPhoto(img.open("rb"))
-                for img in images[: settings.telegram_max_media_group_size]
-            ]
+            # For media groups, caption goes on the first item only
+            images_to_send = images[: settings.telegram_max_media_group_size]
+            media_group = []
+            for i, img in enumerate(images_to_send):
+                if i == 0 and caption:
+                    media_group.append(InputMediaPhoto(img.open("rb"), caption=caption))
+                else:
+                    media_group.append(InputMediaPhoto(img.open("rb")))
             await message.reply_media_group(
                 media=media_group, disable_notification=True
             )
@@ -149,10 +164,10 @@ async def download_and_send_with_gallery_dl(
 
 
 def _run_gallery_dl_subprocess(url: str, temp_dir: Path) -> None:
-    """Helper to run gallery-dl in a subprocess."""
+    """Helper to run gallery-dl in a subprocess with metadata extraction."""
     try:
         subprocess.run(
-            ["gallery-dl", "-d", str(temp_dir), url],
+            ["gallery-dl", "-d", str(temp_dir), "--write-info-json", url],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
             check=True,
@@ -164,3 +179,31 @@ def _run_gallery_dl_subprocess(url: str, temp_dir: Path) -> None:
         error_output = e.stderr.decode("utf-8", errors="ignore")
         logger.error(f"gallery-dl subprocess failed with output:\n{error_output}")
         raise
+
+
+def _extract_caption_from_gallery_dl(temp_dir: Path) -> str:
+    """Extract caption/description from gallery-dl info JSON files."""
+    json_files = list(temp_dir.rglob("*.json"))
+    if not json_files:
+        return ""
+
+    # Try to find description in any of the JSON files
+    for json_file in json_files:
+        try:
+            with json_file.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+                # gallery-dl uses various field names for description
+                description = (
+                    data.get("description")
+                    or data.get("content")
+                    or data.get("caption")
+                    or data.get("title")
+                    or ""
+                )
+                if description:
+                    return truncate_caption(description)
+        except (json.JSONDecodeError, OSError) as e:
+            logger.debug(f"Failed to parse gallery-dl JSON {json_file}: {e}")
+            continue
+
+    return ""
