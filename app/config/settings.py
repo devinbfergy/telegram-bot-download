@@ -57,6 +57,10 @@ API_TOKEN = _get("API_TOKEN", required=False)
 GEMINI_API_KEY = _get("GEMINI_API_KEY", required=False)
 AI_TRUTH_CHECK_ENABLED = _get("AI_TRUTH_CHECK_ENABLED", "0") in {"1", "true", "True"}
 
+# GitHub settings
+GITHUB_TOKEN = _get("GITHUB_TOKEN", required=False)
+GITHUB_REPO = _get("GITHUB_REPO", required=False)  # Format: "owner/repo"
+
 
 @dataclass(slots=True)
 class AppSettings:
@@ -67,6 +71,10 @@ class AppSettings:
     log_json: bool = LOG_JSON
     timeouts: dict[str, int] = None  # type: ignore
     ai_truth_check_enabled: bool = AI_TRUTH_CHECK_ENABLED
+
+    # GitHub settings
+    github_token: str = GITHUB_TOKEN
+    github_repo: str = GITHUB_REPO
 
     # Telegram settings
     telegram_max_video_size: int = TELEGRAM_FILE_LIMIT_BYTES

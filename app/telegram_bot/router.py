@@ -51,6 +51,15 @@ def register(application: Application) -> Application:
     )
     logger.info("Registered handle_gork_is_this_real handler")
 
+    # GitHub issue handler - @gork open issue / @gork open an issue
+    application.add_handler(
+        MessageHandler(
+            filters.TEXT & filters.Regex(r"(?i)@gork\s+open\s+(an\s+)?issue"),
+            handlers.handle_gork_open_issue,
+        )
+    )
+    logger.info("Registered handle_gork_open_issue handler")
+
     # General message handler - processes URLs
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.handle_message)

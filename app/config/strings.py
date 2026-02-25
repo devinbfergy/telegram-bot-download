@@ -40,4 +40,13 @@ MESSAGES = {
     # Good bot catgirl feature
     "error_catgirl_features_not_configured": "❌ Catgirl features are not configured (missing Gemini API key).",
     "error_catgirl_api_request_failed": "❌ Failed to get catgirl response. Nya~ something went wrong!",
+    # GitHub issue feature
+    "github_issue_fetching_messages": "📝 Fetching recent messages...",
+    "github_issue_summarizing": "🤖 Summarizing conversation...",
+    "github_issue_creating": "🐙 Creating GitHub issue...",
+    "github_issue_created": "✅ GitHub issue created: {url}",
+    "error_github_not_configured": "❌ GitHub integration is not configured. Set GITHUB_TOKEN and GITHUB_REPO environment variables.",
+    "error_github_api_failed": "❌ Failed to create GitHub issue. Please try again later.",
+    "error_github_no_messages": "❌ Could not find any messages to create an issue from.",
+    "error_github_summarization_failed": "❌ Failed to summarize the conversation. Please try again later.",
 }

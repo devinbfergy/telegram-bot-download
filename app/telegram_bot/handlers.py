@@ -6,6 +6,7 @@ from telegram.ext import ContextTypes
 from app.config.settings import AppSettings
 from app.config.strings import MESSAGES
 from app.features.ai_truth_check import ai_truth_check
+from app.features.github_issue import open_github_issue
 from app.features.good_bot_catgirl import good_bot_catgirl
 from app.features.reprocess_bad_bot import reprocess_bad_bot
 from app.media.downloader import Downloader
@@ -155,3 +156,33 @@ async def handle_gork_is_this_real(
     logger.info("handle_gork_is_this_real: Processing '@gork is this real' message")
     settings: AppSettings = context.application.settings["app_settings"]
     await ai_truth_check(update, context, settings)
+
+
+async def handle_gork_open_issue(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """
+    Handles '@gork open issue' or '@gork open an issue' commands.
+    Creates a GitHub issue from recent chat messages.
+    """
+    logger.info(f"handle_gork_open_issue called with update: {update.update_id}")
+
+    if not update.message or not update.message.text:
+        logger.info("handle_gork_open_issue: No message or text, returning")
+        return
+
+    message_text = update.message.text.lower()
+    logger.info(f"handle_gork_open_issue: Message text: {update.message.text}")
+
+    # Check for trigger patterns
+    if not (
+        "@gork" in message_text and "open" in message_text and "issue" in message_text
+    ):
+        logger.info(
+            "handle_gork_open_issue: Not a '@gork open issue' message, returning"
+        )
+        return
+
+    logger.info("handle_gork_open_issue: Processing '@gork open issue' message")
+    settings: AppSettings = context.application.settings["app_settings"]
+    await open_github_issue(update, context, settings)
