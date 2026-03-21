@@ -26,8 +26,50 @@ def enforce_size_limit(size_bytes: int):
         raise SizeLimitExceeded(f"File exceeds {TELEGRAM_FILE_LIMIT_MB}MB limit")
 
 
-# Telegram caption limit is 1024 characters
 TELEGRAM_CAPTION_LIMIT = 1024
+DESCRIPTION_WORD_LIMIT = 15
+
+
+def summarize_description(text: str | None, word_limit: int = DESCRIPTION_WORD_LIMIT) -> str:
+    """
+    Summarizes long descriptions to the first sentence if word count exceeds limit.
+
+    Args:
+        text: The description text to summarize. Can be None.
+        word_limit: Maximum word count before summarization (default 15).
+
+    Returns:
+        First sentence with ellipsis if over limit, or original text if under limit.
+        Returns empty string if input is None/empty.
+    """
+    if not text:
+        return ""
+
+    text = text.strip()
+    if not text:
+        return ""
+
+    words = text.split()
+    
+    sentence_endings = r'[.!?]'
+    match = re.search(sentence_endings, text)
+    
+    if match:
+        first_sentence = text[:match.end()].strip()
+        first_sentence_words = first_sentence.split()
+        
+        if len(first_sentence_words) > word_limit:
+            return " ".join(first_sentence_words[:word_limit]) + "..."
+        
+        if len(words) > word_limit:
+            return first_sentence + "..."
+        
+        return text
+    
+    if len(words) > word_limit:
+        return " ".join(words[:word_limit]) + "..."
+    
+    return text
 
 
 def truncate_caption(text: str | None, max_length: int = TELEGRAM_CAPTION_LIMIT) -> str:
@@ -48,7 +90,6 @@ def truncate_caption(text: str | None, max_length: int = TELEGRAM_CAPTION_LIMIT)
     if len(text) <= max_length:
         return text
 
-    # Truncate at word boundary if possible
     truncated = text[: max_length - 3]
     last_space = truncated.rfind(" ")
     if last_space > max_length // 2:

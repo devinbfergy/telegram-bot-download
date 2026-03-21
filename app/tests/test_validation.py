@@ -8,7 +8,9 @@ from app.utils.validation import (
     validate_url,
     enforce_size_limit,
     truncate_caption,
+    summarize_description,
     TELEGRAM_CAPTION_LIMIT,
+    DESCRIPTION_WORD_LIMIT,
 )
 
 
@@ -139,3 +141,60 @@ def test_truncate_caption_custom_limit():
     result = truncate_caption(text, max_length=20)
     assert len(result) <= 20
     assert result.endswith("...")
+
+
+def test_summarize_description_none():
+    assert summarize_description(None) == ""
+
+
+def test_summarize_description_empty():
+    assert summarize_description("") == ""
+
+
+def test_summarize_description_whitespace():
+    assert summarize_description("   ") == ""
+
+
+def test_summarize_description_short():
+    text = "This is a short description."
+    assert summarize_description(text) == text
+
+
+def test_summarize_description_at_limit():
+    text = "One two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen"
+    result = summarize_description(text)
+    assert result == text
+
+
+def test_summarize_description_over_limit_with_sentence():
+    text = "This is the first sentence. This is the second sentence with many more words that go beyond the limit."
+    result = summarize_description(text)
+    assert result == "This is the first sentence...."
+    assert "second sentence" not in result
+
+
+def test_summarize_description_over_limit_no_sentence():
+    text = "word " * 20
+    result = summarize_description(text)
+    words_in_result = result.replace("...", "").split()
+    assert len(words_in_result) == DESCRIPTION_WORD_LIMIT
+    assert result.endswith("...")
+
+
+def test_summarize_description_question_mark():
+    text = "Is this the first sentence? This is the second sentence with many more words that exceed our limit."
+    result = summarize_description(text)
+    assert result == "Is this the first sentence?..."
+
+
+def test_summarize_description_exclamation():
+    text = "This is exciting! This is the second sentence with many more words here that exceed the limit."
+    result = summarize_description(text)
+    assert result == "This is exciting!..."
+
+
+def test_summarize_description_custom_word_limit():
+    text = "One two three four five six seven eight nine ten"
+    result = summarize_description(text, word_limit=5)
+    assert result == "One two three four five..."
+
