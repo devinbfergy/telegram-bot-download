@@ -57,9 +57,14 @@ API_TOKEN = _get("API_TOKEN", required=False)
 GEMINI_API_KEY = _get("GEMINI_API_KEY", required=False)
 AI_TRUTH_CHECK_ENABLED = _get("AI_TRUTH_CHECK_ENABLED", "0") in {"1", "true", "True"}
 
+INSTAGRAM_SESSIONID = _get("INSTAGRAM_SESSIONID", required=False)
+
 # GitHub settings
 GITHUB_TOKEN = _get("GITHUB_TOKEN", required=False)
 GITHUB_REPO = _get("GITHUB_REPO", required=False)  # Format: "owner/repo"
+
+# SQLite message store (mounted volume keeps it across container restarts)
+SQLITE_DB_PATH = Path(_get("SQLITE_DB_PATH", "/data/bot_messages.db"))
 
 
 @dataclass(slots=True)
@@ -72,9 +77,15 @@ class AppSettings:
     timeouts: dict[str, int] = None  # type: ignore
     ai_truth_check_enabled: bool = AI_TRUTH_CHECK_ENABLED
 
+    # Instagram authentication
+    instagram_sessionid: str = INSTAGRAM_SESSIONID
+
     # GitHub settings
     github_token: str = GITHUB_TOKEN
     github_repo: str = GITHUB_REPO
+
+    # SQLite message store
+    db_path: Path = SQLITE_DB_PATH
 
     # Telegram settings
     telegram_max_video_size: int = TELEGRAM_FILE_LIMIT_BYTES

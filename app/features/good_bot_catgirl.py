@@ -85,7 +85,10 @@ async def good_bot_catgirl(
     headers = {
         "Content-Type": "application/json",
     }
-    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "tools": [{"googleSearch": {}}],
+    }
 
     try:
         async with aiohttp.ClientSession() as session:

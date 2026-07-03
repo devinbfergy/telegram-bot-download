@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 from app.config.settings import load_config
 from app.core.logging import get_logger
 from app.telegram_bot.router import register
+from app.utils.database import init_db_sync
 from telegram.ext import ApplicationBuilder
 
 if TYPE_CHECKING:
@@ -32,6 +33,10 @@ def create_app(settings: AppSettings | None = None) -> Application:
 
     if not settings.api_token:
         raise RuntimeError("API_TOKEN not set in environment")
+
+    # Ensure the parent directory exists and initialise the SQLite schema.
+    settings.db_path.parent.mkdir(parents=True, exist_ok=True)
+    init_db_sync(str(settings.db_path))
 
     app = ApplicationBuilder().token(settings.api_token).build()
 

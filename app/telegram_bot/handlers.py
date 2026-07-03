@@ -8,11 +8,13 @@ from app.config.strings import MESSAGES
 from app.features.ai_truth_check import ai_truth_check
 from app.features.github_issue import open_github_issue
 from app.features.good_bot_catgirl import good_bot_catgirl
+from app.features.mention_responder import respond_to_mention
 from app.features.reprocess_bad_bot import reprocess_bad_bot
 from app.media.downloader import Downloader
-from app.telegram_bot.status_messenger import StatusMessenger
-from app.utils.validation import extract_url
 from app.media.detectors import is_image_url, is_tiktok_photo_url, is_video_url
+from app.telegram_bot.status_messenger import StatusMessenger
+from app.utils.database import store_message
+from app.utils.validation import extract_url
 
 logger = logging.getLogger(__name__)
 
@@ -174,7 +176,6 @@ async def handle_gork_open_issue(
     message_text = update.message.text.lower()
     logger.info(f"handle_gork_open_issue: Message text: {update.message.text}")
 
-    # Check for trigger patterns
     if not (
         "@gork" in message_text and "open" in message_text and "issue" in message_text
     ):
@@ -186,3 +187,98 @@ async def handle_gork_open_issue(
     logger.info("handle_gork_open_issue: Processing '@gork open issue' message")
     settings: AppSettings = context.application.settings["app_settings"]
     await open_github_issue(update, context, settings)
+
+
+async def handle_guys_being_dudes_bot(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """
+    Handles messages from @guys_being_dudes_bot and responds with a greeting.
+    """
+    logger.info(f"handle_guys_being_dudes_bot called with update: {update.update_id}")
+
+    if not update.message:
+        logger.info("handle_guys_being_dudes_bot: No message, returning")
+        return
+
+    if not update.message.from_user:
+        logger.info("handle_guys_being_dudes_bot: No from_user, returning")
+        return
+
+    username = update.message.from_user.username
+    is_bot = update.message.from_user.is_bot
+
+    logger.info(f"handle_guys_being_dudes_bot: username={username}, is_bot={is_bot}")
+
+    if is_bot and username == "guys_being_dudes_bot":
+        logger.info("handle_guys_being_dudes_bot: Detected message from guys_being_dudes_bot")
+        await update.message.reply_text(
+            MESSAGES["guys_being_dudes_response"], disable_notification=True
+        )
+
+
+async def handle_mention(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """
+    Handles generic @gork mentions (not covered by more specific handlers).
+    Uses Gemini with the last 10 minutes of chat history as context.
+    """
+    logger.info(f"handle_mention called with update: {update.update_id}")
+
+    if not update.message or not update.message.text:
+        return
+
+    settings: AppSettings = context.application.settings["app_settings"]
+    await respond_to_mention(update, context, settings)
+
+
+async def handle_guys_being_dudes_mention(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """
+    Handles messages from @guys_being_dudes_bot using Gemini with chat history.
+    Replaces the static 'sup dude 🤙' reply with a context-aware Gemini response.
+    """
+    logger.info(
+        f"handle_guys_being_dudes_mention called with update: {update.update_id}"
+    )
+
+    if not update.message or not update.message.from_user:
+        return
+
+    username = update.message.from_user.username
+    is_bot = update.message.from_user.is_bot
+
+    if not (is_bot and username == "guys_being_dudes_bot"):
+        return
+
+    logger.info("handle_guys_being_dudes_mention: responding to guys_being_dudes_bot")
+    settings: AppSettings = context.application.settings["app_settings"]
+    await respond_to_mention(update, context, settings)
+
+
+async def log_message_to_db(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """
+    Passively logs every text message to SQLite for use as conversation context.
+    Runs in its own handler group so it never interferes with other handlers.
+    """
+    if not update.message or not update.message.text:
+        return
+
+    chat_id = update.effective_chat.id
+    user = update.message.from_user
+    user_id = user.id if user else None
+    username = user.username if user else None
+    first_name = user.first_name if user else None
+    text = update.message.text
+
+    settings: AppSettings = context.application.settings["app_settings"]
+    db_path = str(settings.db_path)
+
+    try:
+        await store_message(db_path, chat_id, user_id, username, first_name, text)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("log_message_to_db: failed to store message: %s", exc, exc_info=True)

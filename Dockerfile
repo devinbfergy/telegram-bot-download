@@ -32,6 +32,10 @@ RUN uv sync --upgrade --prerelease allow
 COPY main.py /app/
 COPY app/ /app/app/
 
+# Create the data directory used for the SQLite message store.
+# A named Docker volume should be mounted here so the DB survives restarts.
+RUN mkdir -p /data
+
 # Command to run your application (example)
 # Replace with the actual command to start your application
 CMD [ "uv", "run", "main.py"]

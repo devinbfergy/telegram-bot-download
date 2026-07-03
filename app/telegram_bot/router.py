@@ -19,6 +19,12 @@ def register(application: Application) -> Application:
     """
     Register all handlers with the Telegram application.
 
+    Handler groups:
+      Group 0  – primary routing (first match wins within the group).
+      Group 1  – "good bot" (runs independently alongside group 0).
+      Group 2  – passive message logger (runs for every text message,
+                 never blocks other handlers).
+
     Args:
         application: The Telegram Application instance.
 
@@ -27,12 +33,15 @@ def register(application: Application) -> Application:
     """
     logger.info("Registering handlers...")
 
-    # Command handlers
+    # ------------------------------------------------------------------ #
+    # Group 0 – primary handlers, ordered most-specific → least-specific  #
+    # ------------------------------------------------------------------ #
+
+    # /start command
     application.add_handler(CommandHandler("start", handlers.start))
     logger.info("Registered /start command handler")
 
-    # Reply message handlers - check for specific patterns in replies
-    # Use Regex filters to only match when the specific text is present
+    # "bad bot" reply → reprocess the download
     application.add_handler(
         MessageHandler(
             filters.TEXT & filters.REPLY & filters.Regex(r"(?i)bad\s+bot"),
@@ -41,6 +50,7 @@ def register(application: Application) -> Application:
     )
     logger.info("Registered handle_bad_bot_reply handler")
 
+    # "@gork is this real" reply → Gemini fact-check
     application.add_handler(
         MessageHandler(
             filters.TEXT
@@ -51,7 +61,7 @@ def register(application: Application) -> Application:
     )
     logger.info("Registered handle_gork_is_this_real handler")
 
-    # GitHub issue handler - @gork open issue / @gork open an issue
+    # "@gork open (an) issue" → GitHub issue via Gemini
     application.add_handler(
         MessageHandler(
             filters.TEXT & filters.Regex(r"(?i)@gork\s+open\s+(an\s+)?issue"),
@@ -60,14 +70,33 @@ def register(application: Application) -> Application:
     )
     logger.info("Registered handle_gork_open_issue handler")
 
-    # General message handler - processes URLs
+    # Messages FROM @guys_being_dudes_bot → Gemini context-aware reply
+    application.add_handler(
+        MessageHandler(
+            filters.TEXT & filters.User(username="guys_being_dudes_bot"),
+            handlers.handle_guys_being_dudes_mention,
+        )
+    )
+    logger.info("Registered handle_guys_being_dudes_mention handler")
+
+    # Generic @gork mention (anything not caught by the specific handlers above)
+    application.add_handler(
+        MessageHandler(
+            filters.TEXT & filters.Regex(r"(?i)@gork"),
+            handlers.handle_mention,
+        )
+    )
+    logger.info("Registered handle_mention (@gork generic) handler")
+
+    # Catch-all URL downloader
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.handle_message)
     )
     logger.info("Registered handle_message handler")
 
-    # Good bot handler - handles "good bot" from @McClintock96 (doesn't require reply)
-    # Put in group 1 so it always runs even if handle_message processes the message
+    # ------------------------------------------------------------------ #
+    # Group 1 – "good bot" (always fires, even if group 0 consumed msg)   #
+    # ------------------------------------------------------------------ #
     application.add_handler(
         MessageHandler(
             filters.TEXT & filters.Regex(r"(?i)good\s+bot"),
@@ -75,6 +104,19 @@ def register(application: Application) -> Application:
         ),
         group=1,
     )
+    logger.info("Registered handle_good_bot_reply handler (group 1)")
+
+    # ------------------------------------------------------------------ #
+    # Group 2 – passive message logger (never stops propagation)          #
+    # ------------------------------------------------------------------ #
+    application.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            handlers.log_message_to_db,
+        ),
+        group=2,
+    )
+    logger.info("Registered log_message_to_db handler (group 2)")
 
     logger.info(f"Total handler groups: {len(application.handlers)}")
     for group_id, handler_list in application.handlers.items():

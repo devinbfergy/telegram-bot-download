@@ -1,0 +1,25 @@
+services:
+  bot:
+    build: .
+    restart: always
+    environment:
+      - API_TOKEN=${API_TOKEN}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      # Optional overrides
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - GITHUB_REPO=${GITHUB_REPO:-}
+      - INSTAGRAM_SESSIONID=${INSTAGRAM_SESSIONID:-}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_JSON=${LOG_JSON:-0}
+      # SQLite database path inside the container.
+      # The named volume below keeps this file across restarts and rebuilds.
+      - SQLITE_DB_PATH=/data/bot_messages.db
+    volumes:
+      # Persist the SQLite message store across container restarts/rebuilds.
+      - bot_data:/data
+      # Optional: persist gallery-dl config/cookies
+      # - ./gallery-dl:/app/gallery-dl
+
+volumes:
+  bot_data:
+    driver: local

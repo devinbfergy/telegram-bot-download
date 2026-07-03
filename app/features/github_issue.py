@@ -98,24 +98,34 @@ async def fetch_recent_messages(
         # For now, we'll work with what we have - the replied-to message
         # and any context from the trigger message itself
         if trigger_message.text:
-            # Remove the trigger command from the message
             trigger_text = trigger_message.text
-            # Clean up common trigger patterns
+            content_before = ""
+            content_after = ""
+            
+            # Check for content before and after the trigger command
             for pattern in [
                 "@gork open issue",
                 "@gork open an issue",
                 "open issue",
                 "open an issue",
             ]:
-                trigger_text = trigger_text.lower().replace(pattern.lower(), "").strip()
-            if trigger_text:
+                if pattern.lower() in trigger_text.lower():
+                    parts = trigger_text.lower().split(pattern.lower(), 1)
+                    content_before = trigger_text[:len(parts[0])].strip()
+                    content_after = trigger_text[len(parts[0]) + len(pattern):].strip()
+                    break
+            
+            # Combine content before and after the trigger
+            combined_content = " ".join(filter(None, [content_before, content_after]))
+            
+            if combined_content:
                 sender = (
                     trigger_message.from_user.username
                     or trigger_message.from_user.first_name
                     if trigger_message.from_user
                     else "Unknown"
                 )
-                messages.append(f"@{sender} (issue request context): {trigger_text}")
+                messages.append(f"@{sender} (issue request): {combined_content}")
 
     except Exception as e:
         logger.error(f"Error fetching messages: {e}", exc_info=True)
@@ -141,7 +151,10 @@ async def summarize_with_gemini(
     headers = {
         "Content-Type": "application/json",
     }
-    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "tools": [{"googleSearch": {}}],
+    }
 
     try:
         async with aiohttp.ClientSession() as session:

@@ -49,4 +49,8 @@ MESSAGES = {
     "error_github_api_failed": "❌ Failed to create GitHub issue. Please try again later.",
     "error_github_no_messages": "❌ Could not find any messages to create an issue from.",
     "error_github_summarization_failed": "❌ Failed to summarize the conversation. Please try again later.",
+    "guys_being_dudes_response": "sup dude 🤙",
+    # Mention responder (generic @gork / @guys_being_dudes_bot mentions)
+    "error_mention_responder_not_configured": "❌ Mention responder not configured (missing Gemini API key).",
+    "error_mention_responder_api_failed": "❌ Failed to get a response. Try again later.",
 }
