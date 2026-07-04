@@ -1,3 +1,4 @@
+import html as html_module
 import logging
 
 import aiohttp
@@ -10,25 +11,24 @@ from app.utils.database import StoredMessage, get_recent_messages
 
 logger = logging.getLogger(__name__)
 
-GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent"
+GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/interactions"
+GEMINI_MODEL = "gemini-2.5-flash"
 
-SYSTEM_PROMPT_TEMPLATE = """
-You are a truth-telling bot named Gork. When a user asks "@gork is this real", you analyze the provided statement to determine if it is fact or fiction.
+SYSTEM_PROMPT_TEMPLATE = """You are Gork, a fact-checking bot with the energy of someone who has seen too much and is mildly annoyed by it. You tell the truth, you use the internet to back it up, and you do it with a little attitude.
 
-Your reply should be:
-- Concise and direct.
-- In a sarcastic but helpful tone.
-- Start with a creative word; avoid "Well," or "Oh,".
-- Do not repeat the user's question ("@gork is this real").
-- Use the web search results available to you to verify claims before responding.
-- If the statement is a verifiable fact or fiction, state it clearly and cite what you found.
-- If it is a subjective opinion, a joke, or something you cannot verify, frame your response as a witty or humorous observation.
+Rules:
+- Be concise and direct — 2-4 sentences max.
+- Sassy but not mean. Helpful but not boring.
+- Never start with "Well," or "Oh," — be more creative than that.
+- Don't repeat the question back. Just answer it.
+- Use your Google Search tool to verify claims. Cite what you found.
+- If it's opinion or unverifiable, make a dry observation about it.
+- If it's obviously false, feel free to be a little dramatic about it.
 
-Recent chat context (last 10 minutes, for background only — do not fact-check this):
+Recent chat context (last 10 minutes — background only, don't fact-check this):
 {chat_history}
 
-Statement to analyze: {original_text}
-"""
+Statement to analyze: {original_text}"""
 
 
 def _format_history(messages: list[StoredMessage]) -> str:
@@ -39,6 +39,52 @@ def _format_history(messages: list[StoredMessage]) -> str:
         name = msg.username or msg.first_name or "unknown"
         lines.append(f"{name}: {msg.message_text}")
     return "\n".join(lines)
+
+
+def _format_with_citations(text: str, annotations: list[dict]) -> tuple[str, str | None]:
+    """
+    Insert inline [n] citation markers into the model's text using the
+    start_index/end_index offsets from each url_citation annotation, then
+    append a numbered sources list as HTML links.
+
+    Returns (formatted_text, parse_mode): parse_mode is "HTML" when citations
+    are present, None otherwise (plain text — no HTML escaping needed).
+    """
+    url_citations = [a for a in annotations if a.get("type") == "url_citation"]
+    if not url_citations:
+        return text, None
+
+    # Assign citation numbers in first-appearance order (by start_index).
+    seen_urls: dict[str, int] = {}
+    for a in sorted(url_citations, key=lambda x: x.get("start_index", 0)):
+        url = a.get("url", "")
+        if url and url not in seen_urls:
+            seen_urls[url] = len(seen_urls) + 1
+
+    # Insert "[n]" markers from the end of the string backwards so earlier
+    # indices stay valid after each insertion.
+    result = text
+    for a in sorted(url_citations, key=lambda x: x.get("end_index", 0), reverse=True):
+        url = a.get("url", "")
+        num = seen_urls.get(url)
+        if num is None:
+            continue
+        end = min(a.get("end_index", len(result)), len(result))
+        result = result[:end] + f"[{num}]" + result[end:]
+
+    # HTML-escape the text (square brackets are safe; only & < > " need escaping).
+    escaped = html_module.escape(result)
+
+    # Build the numbered sources footer.
+    sources = "\n\n<b>Sources:</b>"
+    for url, num in sorted(seen_urls.items(), key=lambda kv: kv[1]):
+        title = next(
+            (a.get("title") or url for a in url_citations if a.get("url") == url),
+            url,
+        )
+        sources += f'\n{num}. <a href="{html_module.escape(url)}">{html_module.escape(title)}</a>'
+
+    return escaped + sources, "HTML"
 
 
 async def ai_truth_check(
@@ -83,27 +129,36 @@ async def ai_truth_check(
         original_text=original_text,
     )
 
-    api_url = f"{GEMINI_API_URL}?key={settings.gemini_api_key}"
-    headers = {"Content-Type": "application/json"}
+    headers = {
+        "Content-Type": "application/json",
+        "x-goog-api-key": settings.gemini_api_key,
+    }
     payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        # Enable Google Search grounding (REST API uses camelCase "googleSearch").
-        "tools": [{"googleSearch": {}}],
+        "model": GEMINI_MODEL,
+        "input": prompt,
+        "tools": [{"type": "google_search"}],
     }
 
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.post(api_url, headers=headers, json=payload) as response:
+            async with session.post(GEMINI_API_URL, headers=headers, json=payload) as response:
                 response.raise_for_status()
                 data = await response.json()
 
         try:
-            reply_text = data["candidates"][0]["content"]["parts"][0]["text"]
-        except (KeyError, IndexError):
+            model_output = next(
+                s for s in data["steps"] if s.get("type") == "model_output"
+            )
+            content_block = model_output["content"][0]
+            raw_text = content_block["text"]
+            annotations = content_block.get("annotations", [])
+            reply_text, parse_mode = _format_with_citations(raw_text, annotations)
+        except (KeyError, IndexError, StopIteration, TypeError):
             logger.error("ai_truth_check: unexpected Gemini response shape: %s", data)
             reply_text = MESSAGES["error_generic"]
+            parse_mode = None
 
-        await update.message.reply_text(reply_text, disable_notification=True)
+        await update.message.reply_text(reply_text, parse_mode=parse_mode, disable_notification=True)
 
     except aiohttp.ClientError as e:
         logger.error("ai_truth_check: Gemini request failed: %s", e, exc_info=True)

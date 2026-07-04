@@ -10,6 +10,7 @@ this module:
 
 from __future__ import annotations
 
+import html as html_module
 import logging
 
 import aiohttp
@@ -22,17 +23,16 @@ from app.utils.database import StoredMessage, get_recent_messages
 
 logger = logging.getLogger(__name__)
 
-GEMINI_API_URL = (
-    "https://generativelanguage.googleapis.com/v1beta/models/"
-    "gemini-2.5-flash-lite:generateContent"
-)
+GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/interactions"
+GEMINI_MODEL = "gemini-2.5-flash"
 
 _SYSTEM_PROMPT = """\
-You are Gork, a sarcastic, dry-witted bot embedded in a private group chat \
-of friends. You speak in short, punchy lines — no more than 2-3 sentences. \
-You never introduce yourself unprompted. You are self-aware but not annoying \
-about it. When you don't have enough context you make a joke rather than \
-pretending you know things you don't.
+You are Gork, a bot embedded in a private group chat of friends. You have the \
+energy of someone who's slightly too smart for their own good and knows it. \
+You give real answers but with personality — dry, punchy, occasionally sarcastic. \
+2-3 sentences max. Never introduce yourself unprompted. If you don't have context, \
+make a joke instead of guessing. You can use Google Search to look things up — \
+and you should, especially for anything factual or current events.
 
 Recent chat history (last 10 minutes):
 {chat_history}
@@ -49,6 +49,49 @@ def _format_history(messages: list[StoredMessage]) -> str:
         display_name = msg.username or msg.first_name or "unknown"
         lines.append(f"{display_name}: {msg.message_text}")
     return "\n".join(lines)
+
+
+def _format_with_citations(text: str, annotations: list[dict]) -> tuple[str, str | None]:
+    """
+    Insert inline [n] citation markers into the model's text using the
+    start_index/end_index offsets from each url_citation annotation, then
+    append a numbered sources list as HTML links.
+
+    Returns (formatted_text, parse_mode): parse_mode is "HTML" when citations
+    are present, None otherwise.
+    """
+    url_citations = [a for a in annotations if a.get("type") == "url_citation"]
+    if not url_citations:
+        return text, None
+
+    # Assign citation numbers in first-appearance order (by start_index).
+    seen_urls: dict[str, int] = {}
+    for a in sorted(url_citations, key=lambda x: x.get("start_index", 0)):
+        url = a.get("url", "")
+        if url and url not in seen_urls:
+            seen_urls[url] = len(seen_urls) + 1
+
+    # Insert "[n]" markers from the end backwards so earlier indices stay valid.
+    result = text
+    for a in sorted(url_citations, key=lambda x: x.get("end_index", 0), reverse=True):
+        url = a.get("url", "")
+        num = seen_urls.get(url)
+        if num is None:
+            continue
+        end = min(a.get("end_index", len(result)), len(result))
+        result = result[:end] + f"[{num}]" + result[end:]
+
+    escaped = html_module.escape(result)
+
+    sources = "\n\n<b>Sources:</b>"
+    for url, num in sorted(seen_urls.items(), key=lambda kv: kv[1]):
+        title = next(
+            (a.get("title") or url for a in url_citations if a.get("url") == url),
+            url,
+        )
+        sources += f'\n{num}. <a href="{html_module.escape(url)}">{html_module.escape(title)}</a>'
+
+    return escaped + sources, "HTML"
 
 
 async def respond_to_mention(
@@ -84,30 +127,40 @@ async def respond_to_mention(
     if trigger_text:
         full_prompt += f"\n\nMessage: {trigger_text}"
 
-    api_url = f"{GEMINI_API_URL}?key={settings.gemini_api_key}"
+    api_url = GEMINI_API_URL
     payload = {
-        "contents": [{"parts": [{"text": full_prompt}]}],
-        # Enable Google Search grounding so Gork can pull in current info.
-        "tools": [{"googleSearch": {}}],
+        "model": GEMINI_MODEL,
+        "input": full_prompt,
+        "tools": [{"type": "google_search"}],
     }
 
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 api_url,
-                headers={"Content-Type": "application/json"},
+                headers={
+                    "Content-Type": "application/json",
+                    "x-goog-api-key": settings.gemini_api_key,
+                },
                 json=payload,
             ) as resp:
                 resp.raise_for_status()
                 data = await resp.json()
 
         try:
-            reply_text = data["candidates"][0]["content"]["parts"][0]["text"]
-        except (KeyError, IndexError):
+            model_output = next(
+                s for s in data["steps"] if s.get("type") == "model_output"
+            )
+            content_block = model_output["content"][0]
+            raw_text = content_block["text"]
+            annotations = content_block.get("annotations", [])
+            reply_text, parse_mode = _format_with_citations(raw_text, annotations)
+        except (KeyError, IndexError, StopIteration, TypeError):
             logger.error("mention_responder: unexpected Gemini response shape: %s", data)
             reply_text = MESSAGES["error_generic"]
+            parse_mode = None
 
-        await update.message.reply_text(reply_text, disable_notification=True)
+        await update.message.reply_text(reply_text, parse_mode=parse_mode, disable_notification=True)
 
     except aiohttp.ClientError as exc:
         logger.error("mention_responder: Gemini request failed: %s", exc, exc_info=True)
