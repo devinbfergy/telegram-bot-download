@@ -211,15 +211,15 @@ async def handle_guys_being_dudes_bot(
     logger.info(f"handle_guys_being_dudes_bot: username={username}, is_bot={is_bot}")
 
     if is_bot and username == "guys_being_dudes_bot":
-        logger.info("handle_guys_being_dudes_bot: Detected message from guys_being_dudes_bot")
+        logger.info(
+            "handle_guys_being_dudes_bot: Detected message from guys_being_dudes_bot"
+        )
         await update.message.reply_text(
             MESSAGES["guys_being_dudes_response"], disable_notification=True
         )
 
 
-async def handle_mention(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> None:
+async def handle_mention(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     Handles generic @gork mentions (not covered by more specific handlers).
     Uses Gemini with the last 10 minutes of chat history as context.
@@ -258,9 +258,7 @@ async def handle_guys_being_dudes_mention(
     await respond_to_mention(update, context, settings)
 
 
-async def log_message_to_db(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> None:
+async def log_message_to_db(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     Passively logs every text message to SQLite for use as conversation context.
     Runs in its own handler group so it never interferes with other handlers.
@@ -281,4 +279,6 @@ async def log_message_to_db(
     try:
         await store_message(db_path, chat_id, user_id, username, first_name, text)
     except Exception as exc:  # noqa: BLE001
-        logger.error("log_message_to_db: failed to store message: %s", exc, exc_info=True)
+        logger.error(
+            "log_message_to_db: failed to store message: %s", exc, exc_info=True
+        )

@@ -86,7 +86,9 @@ def register(application: Application) -> Application:
             handlers.handle_mention,
         )
     )
-    logger.info("Registered handle_mention (@gork / @guys_being_dudes_bot generic) handler")
+    logger.info(
+        "Registered handle_mention (@gork / @guys_being_dudes_bot generic) handler"
+    )
 
     # Catch-all URL downloader
     application.add_handler(

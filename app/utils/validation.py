@@ -30,7 +30,9 @@ TELEGRAM_CAPTION_LIMIT = 1024
 DESCRIPTION_WORD_LIMIT = 15
 
 
-def summarize_description(text: str | None, word_limit: int = DESCRIPTION_WORD_LIMIT) -> str:
+def summarize_description(
+    text: str | None, word_limit: int = DESCRIPTION_WORD_LIMIT
+) -> str:
     """
     Summarizes long descriptions to the first sentence if word count exceeds limit.
 
@@ -50,25 +52,25 @@ def summarize_description(text: str | None, word_limit: int = DESCRIPTION_WORD_L
         return ""
 
     words = text.split()
-    
-    sentence_endings = r'[.!?]'
+
+    sentence_endings = r"[.!?]"
     match = re.search(sentence_endings, text)
-    
+
     if match:
-        first_sentence = text[:match.end()].strip()
+        first_sentence = text[: match.end()].strip()
         first_sentence_words = first_sentence.split()
-        
+
         if len(first_sentence_words) > word_limit:
             return " ".join(first_sentence_words[:word_limit]) + "..."
-        
+
         if len(words) > word_limit:
             return first_sentence + "..."
-        
+
         return text
-    
+
     if len(words) > word_limit:
         return " ".join(words[:word_limit]) + "..."
-    
+
     return text
 
 

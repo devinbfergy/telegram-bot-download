@@ -32,7 +32,11 @@ def _make_session_mock(MockClientSession, mock_response):
 
 
 @pytest.mark.asyncio
-@patch("app.features.ai_truth_check.get_recent_messages", new_callable=AsyncMock, return_value=[])
+@patch(
+    "app.features.ai_truth_check.get_recent_messages",
+    new_callable=AsyncMock,
+    return_value=[],
+)
 @patch("app.features.ai_truth_check.aiohttp.ClientSession")
 async def test_ai_truth_check_success(MockClientSession, _mock_db, settings):
     update = MagicMock(spec=Update)
@@ -45,7 +49,9 @@ async def test_ai_truth_check_success(MockClientSession, _mock_db, settings):
     mock_response.raise_for_status = AsyncMock()
     mock_response.json = AsyncMock(
         return_value={
-            "candidates": [{"content": {"parts": [{"text": "Indeed, the sky is blue."}]}}]
+            "candidates": [
+                {"content": {"parts": [{"text": "Indeed, the sky is blue."}]}}
+            ]
         }
     )
     _make_session_mock(MockClientSession, mock_response)
@@ -58,7 +64,11 @@ async def test_ai_truth_check_success(MockClientSession, _mock_db, settings):
 
 
 @pytest.mark.asyncio
-@patch("app.features.ai_truth_check.get_recent_messages", new_callable=AsyncMock, return_value=[])
+@patch(
+    "app.features.ai_truth_check.get_recent_messages",
+    new_callable=AsyncMock,
+    return_value=[],
+)
 @patch("app.features.ai_truth_check.aiohttp.ClientSession")
 async def test_ai_truth_check_api_failure(MockClientSession, _mock_db, settings):
     update = MagicMock(spec=Update)
@@ -68,7 +78,9 @@ async def test_ai_truth_check_api_failure(MockClientSession, _mock_db, settings)
     context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
 
     mock_response = AsyncMock()
-    mock_response.raise_for_status = MagicMock(side_effect=aiohttp.ClientError("API Error"))
+    mock_response.raise_for_status = MagicMock(
+        side_effect=aiohttp.ClientError("API Error")
+    )
     _make_session_mock(MockClientSession, mock_response)
 
     await ai_truth_check(update, context, settings)
@@ -136,7 +148,11 @@ async def test_ai_truth_check_no_api_key():
 
 
 @pytest.mark.asyncio
-@patch("app.features.ai_truth_check.get_recent_messages", new_callable=AsyncMock, return_value=[])
+@patch(
+    "app.features.ai_truth_check.get_recent_messages",
+    new_callable=AsyncMock,
+    return_value=[],
+)
 @patch("app.features.ai_truth_check.aiohttp.ClientSession")
 async def test_ai_truth_check_invalid_response_structure(MockClientSession, _mock_db):
     update = MagicMock(spec=Update)
@@ -160,7 +176,11 @@ async def test_ai_truth_check_invalid_response_structure(MockClientSession, _moc
 
 
 @pytest.mark.asyncio
-@patch("app.features.ai_truth_check.get_recent_messages", new_callable=AsyncMock, return_value=[])
+@patch(
+    "app.features.ai_truth_check.get_recent_messages",
+    new_callable=AsyncMock,
+    return_value=[],
+)
 @patch("app.features.ai_truth_check.aiohttp.ClientSession")
 async def test_ai_truth_check_uses_caption_when_no_text(MockClientSession, _mock_db):
     update = MagicMock(spec=Update)

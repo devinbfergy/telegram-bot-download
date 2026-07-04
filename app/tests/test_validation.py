@@ -197,4 +197,3 @@ def test_summarize_description_custom_word_limit():
     text = "One two three four five six seven eight nine ten"
     result = summarize_description(text, word_limit=5)
     assert result == "One two three four five..."
-

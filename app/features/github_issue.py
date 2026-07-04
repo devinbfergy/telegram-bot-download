@@ -101,7 +101,7 @@ async def fetch_recent_messages(
             trigger_text = trigger_message.text
             content_before = ""
             content_after = ""
-            
+
             # Check for content before and after the trigger command
             for pattern in [
                 "@gork open issue",
@@ -111,13 +111,13 @@ async def fetch_recent_messages(
             ]:
                 if pattern.lower() in trigger_text.lower():
                     parts = trigger_text.lower().split(pattern.lower(), 1)
-                    content_before = trigger_text[:len(parts[0])].strip()
-                    content_after = trigger_text[len(parts[0]) + len(pattern):].strip()
+                    content_before = trigger_text[: len(parts[0])].strip()
+                    content_after = trigger_text[len(parts[0]) + len(pattern) :].strip()
                     break
-            
+
             # Combine content before and after the trigger
             combined_content = " ".join(filter(None, [content_before, content_after]))
-            
+
             if combined_content:
                 sender = (
                     trigger_message.from_user.username

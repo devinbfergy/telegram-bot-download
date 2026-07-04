@@ -1,4 +1,3 @@
-import html as html_module
 import logging
 
 import aiohttp
@@ -41,50 +40,13 @@ def _format_history(messages: list[StoredMessage]) -> str:
     return "\n".join(lines)
 
 
-def _format_with_citations(text: str, annotations: list[dict]) -> tuple[str, str | None]:
+def _format_with_citations(
+    text: str, annotations: list[dict]
+) -> tuple[str, str | None]:
     """
-    Insert inline [n] citation markers into the model's text using the
-    start_index/end_index offsets from each url_citation annotation, then
-    append a numbered sources list as HTML links.
-
-    Returns (formatted_text, parse_mode): parse_mode is "HTML" when citations
-    are present, None otherwise (plain text — no HTML escaping needed).
+    Return the model's text as-is without any citation markers or sources footer.
     """
-    url_citations = [a for a in annotations if a.get("type") == "url_citation"]
-    if not url_citations:
-        return text, None
-
-    # Assign citation numbers in first-appearance order (by start_index).
-    seen_urls: dict[str, int] = {}
-    for a in sorted(url_citations, key=lambda x: x.get("start_index", 0)):
-        url = a.get("url", "")
-        if url and url not in seen_urls:
-            seen_urls[url] = len(seen_urls) + 1
-
-    # Insert "[n]" markers from the end of the string backwards so earlier
-    # indices stay valid after each insertion.
-    result = text
-    for a in sorted(url_citations, key=lambda x: x.get("end_index", 0), reverse=True):
-        url = a.get("url", "")
-        num = seen_urls.get(url)
-        if num is None:
-            continue
-        end = min(a.get("end_index", len(result)), len(result))
-        result = result[:end] + f"[{num}]" + result[end:]
-
-    # HTML-escape the text (square brackets are safe; only & < > " need escaping).
-    escaped = html_module.escape(result)
-
-    # Build the numbered sources footer.
-    sources = "\n\n<b>Sources:</b>"
-    for url, num in sorted(seen_urls.items(), key=lambda kv: kv[1]):
-        title = next(
-            (a.get("title") or url for a in url_citations if a.get("url") == url),
-            url,
-        )
-        sources += f'\n{num}. <a href="{html_module.escape(url)}">{html_module.escape(title)}</a>'
-
-    return escaped + sources, "HTML"
+    return text, None
 
 
 async def ai_truth_check(
@@ -141,7 +103,9 @@ async def ai_truth_check(
 
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.post(GEMINI_API_URL, headers=headers, json=payload) as response:
+            async with session.post(
+                GEMINI_API_URL, headers=headers, json=payload
+            ) as response:
                 response.raise_for_status()
                 data = await response.json()
 
@@ -158,7 +122,9 @@ async def ai_truth_check(
             reply_text = MESSAGES["error_generic"]
             parse_mode = None
 
-        await update.message.reply_text(reply_text, parse_mode=parse_mode, disable_notification=True)
+        await update.message.reply_text(
+            reply_text, parse_mode=parse_mode, disable_notification=True
+        )
 
     except aiohttp.ClientError as e:
         logger.error("ai_truth_check: Gemini request failed: %s", e, exc_info=True)
