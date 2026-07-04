@@ -51,7 +51,7 @@ async def download_and_send_with_gallery_dl(
         )
 
         # Run gallery-dl in a separate thread to avoid blocking asyncio loop
-        await run_blocking(_run_gallery_dl_subprocess, url, temp_dir)
+        await run_blocking(_run_gallery_dl_subprocess, url, temp_dir, settings.instagram_sessionid)
 
         all_files = list(temp_dir.rglob("*.*"))
         if not all_files:
@@ -163,11 +163,18 @@ async def download_and_send_with_gallery_dl(
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-def _run_gallery_dl_subprocess(url: str, temp_dir: Path) -> None:
+def _run_gallery_dl_subprocess(url: str, temp_dir: Path, instagram_sessionid: str = "") -> None:
     """Helper to run gallery-dl in a subprocess with metadata extraction."""
     try:
+        cmd = ["gallery-dl", "-d", str(temp_dir), "--write-info-json"]
+        
+        if instagram_sessionid and "instagram.com" in url:
+            cmd.extend(["-o", f"extractor.instagram.cookies={{'sessionid':'{instagram_sessionid}'}}"])
+        
+        cmd.append(url)
+        
         subprocess.run(
-            ["gallery-dl", "-d", str(temp_dir), "--write-info-json", url],
+            cmd,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
             check=True,
