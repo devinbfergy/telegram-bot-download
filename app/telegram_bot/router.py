@@ -79,14 +79,14 @@ def register(application: Application) -> Application:
     )
     logger.info("Registered handle_guys_being_dudes_mention handler")
 
-    # Generic @gork mention (anything not caught by the specific handlers above)
+    # Generic @gork or @guys_being_dudes_bot mention (anything not caught above)
     application.add_handler(
         MessageHandler(
-            filters.TEXT & filters.Regex(r"(?i)@gork"),
+            filters.TEXT & filters.Regex(r"(?i)(@gork|@guys_being_dudes_bot)"),
             handlers.handle_mention,
         )
     )
-    logger.info("Registered handle_mention (@gork generic) handler")
+    logger.info("Registered handle_mention (@gork / @guys_being_dudes_bot generic) handler")
 
     # Catch-all URL downloader
     application.add_handler(
