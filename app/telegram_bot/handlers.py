@@ -15,7 +15,7 @@ from app.media.detectors import is_image_url, is_tiktok_photo_url, is_video_url
 from app.media.downloader import Downloader
 from app.telegram_bot.status_messenger import StatusMessenger
 from app.utils.database import record_user_interaction, store_message
-from app.utils.validation import extract_url
+from app.utils.validation import extract_url, is_chat_allowed
 
 logger = logging.getLogger(__name__)
 
@@ -294,6 +294,9 @@ async def log_message_to_db(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     first_name = user.first_name if user else None
 
     settings: AppSettings = context.application.settings["app_settings"]
+    if not is_chat_allowed(update, settings):
+        return
+
     db_path = str(settings.db_path)
 
     try:

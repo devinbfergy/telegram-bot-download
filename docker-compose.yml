@@ -14,6 +14,10 @@ services:
       - INSTAGRAM_COOKIE_FILE=/data/secrets/instagram_cookies.txt
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LOG_JSON=${LOG_JSON:-0}
+      # Chat allowlist: -1001400184101 (Guys* Being Dudes), -5199749336 (Clints wedding)
+      - ALLOWED_CHAT_IDS=${ALLOWED_CHAT_IDS:--1001400184101,-5199749336}
+      - ADMIN_USERNAMES=${ADMIN_USERNAMES:-megadevx}
+      - ADMIN_USER_IDS=${ADMIN_USER_IDS:-625304326}
       # SQLite database path inside the container.
       # The named volume below keeps this file across restarts and rebuilds.
       - SQLITE_DB_PATH=/data/bot_messages.db

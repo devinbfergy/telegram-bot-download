@@ -1,17 +1,24 @@
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
-from telegram.ext import CommandHandler, MessageHandler, filters
+from telegram import Update
+from telegram.ext import (
+    ApplicationHandlerStop,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    TypeHandler,
+    filters,
+)
 
 from app.features.user_memory import user_memory_cron_job
 from app.telegram_bot import handlers
+from app.utils.validation import is_chat_allowed
 
 if TYPE_CHECKING:
     from telegram.ext import Application
-
-
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +39,12 @@ def register(application: Application) -> Application:
         The application with handlers registered.
     """
     logger.info("Registering handlers...")
+
+    # ------------------------------------------------------------------ #
+    # Group -1 – global allowlist guard (drops updates from unallowed chats)#
+    # ------------------------------------------------------------------ #
+    application.add_handler(TypeHandler(Update, check_chat_allowlist), group=-1)
+    logger.info("Registered check_chat_allowlist guard (group -1)")
 
     # ------------------------------------------------------------------ #
     # Group 0 – primary handlers, ordered most-specific → least-specific  #
@@ -175,3 +188,23 @@ def register_jobs(application: Application) -> None:
         name="user_memory_update",
     )
     logger.info("Registered user_memory_cron_job (interval=%.1fs)", interval_seconds)
+
+
+async def check_chat_allowlist(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """
+    Drop updates from chats that are not in the allowlist.
+    Only allows:
+    1. Chats in settings.allowed_chat_ids.
+    2. Direct messages (DMs) with the creator/admin (@megadevx).
+    """
+    settings = getattr(context.application, "settings", {}).get("app_settings")
+    if settings and not is_chat_allowed(update, settings):
+        chat_id = (
+            update.effective_chat.id if getattr(update, "effective_chat", None) else "unknown"
+        )
+        logger.debug(
+            "check_chat_allowlist: dropping update from non-allowed chat %s", chat_id
+        )
+        raise ApplicationHandlerStop

@@ -207,6 +207,8 @@ async def update_all_user_memories(
     for msg in recent_messages:
         if msg.user_id is None:
             continue
+        if settings.allowed_chat_ids and msg.chat_id not in settings.allowed_chat_ids:
+            continue
         key = (msg.chat_id or 0, msg.user_id)
         user_messages.setdefault(key, []).append(msg)
         curr_u, curr_f = user_info.get(key, (None, None))

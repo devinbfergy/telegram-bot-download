@@ -1,8 +1,16 @@
 from __future__ import annotations
+
 import re
+from typing import TYPE_CHECKING
 from urllib.parse import urlparse
-from app.core.exceptions import UnsupportedURLError, SizeLimitExceeded
+
 from app.config.settings import TELEGRAM_FILE_LIMIT_MB
+from app.core.exceptions import SizeLimitExceeded, UnsupportedURLError
+
+if TYPE_CHECKING:
+    from telegram import Update
+
+    from app.config.settings import AppSettings
 
 ALLOWED_SCHEMES = {"http", "https"}
 
@@ -98,3 +106,41 @@ def truncate_caption(text: str | None, max_length: int = TELEGRAM_CAPTION_LIMIT)
         truncated = truncated[:last_space]
 
     return truncated + "..."
+
+
+def is_chat_allowed(update: Update, settings: AppSettings) -> bool:
+    """
+    Check if the incoming update is from an allowlisted chat.
+    Allowed if:
+    1. allowed_chat_ids is not set / empty (allows all).
+    2. The chat ID is explicitly in settings.allowed_chat_ids.
+    3. It is a private direct message (DM) with the creator/admin (@megadevx).
+    """
+    if not getattr(settings, "allowed_chat_ids", None):
+        return True
+
+    chat = getattr(update, "effective_chat", None)
+    if not chat:
+        return False
+
+    if getattr(chat, "id", None) in settings.allowed_chat_ids:
+        return True
+
+    # Check for direct messages (DMs) with creator/admin
+    if getattr(chat, "type", None) == "private":
+        user = getattr(update, "effective_user", None) or (
+            update.message.from_user if getattr(update, "message", None) else None
+        )
+        if user:
+            username = getattr(user, "username", None)
+            if (
+                username
+                and isinstance(username, str)
+                and username.lower().lstrip("@") in settings.admin_usernames
+            ):
+                return True
+            user_id = getattr(user, "id", None)
+            if user_id in settings.admin_user_ids:
+                return True
+
+    return False

@@ -51,6 +51,7 @@ def memory_settings(temp_db: str) -> AppSettings:
         db_path=Path(temp_db),
         user_memory_enabled=True,
         user_memory_window_hours=24.0,
+        allowed_chat_ids={1, 10, 42, 88, 99, -1001400184101, -5199749336},
     )
 
 

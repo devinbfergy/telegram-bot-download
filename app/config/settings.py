@@ -74,6 +74,25 @@ USER_MEMORY_ENABLED = _get("USER_MEMORY_ENABLED", "1") in {"1", "true", "True"}
 USER_MEMORY_INTERVAL_HOURS = float(_get("USER_MEMORY_INTERVAL_HOURS", "24.0"))
 USER_MEMORY_WINDOW_HOURS = float(_get("USER_MEMORY_WINDOW_HOURS", "24.0"))
 
+# Chat allowlist settings
+# 1. Guys* Being Dudes: -1001400184101
+# 3. Clints (Sams) wedding: -5199749336
+DEFAULT_ALLOWED_CHAT_IDS = "-1001400184101,-5199749336"
+ALLOWED_CHAT_IDS_RAW = _get("ALLOWED_CHAT_IDS", DEFAULT_ALLOWED_CHAT_IDS)
+ALLOWED_CHAT_IDS = {
+    int(cid.strip()) for cid in ALLOWED_CHAT_IDS_RAW.split(",") if cid.strip()
+}
+
+ADMIN_USERNAMES_RAW = _get("ADMIN_USERNAMES", "megadevx")
+ADMIN_USERNAMES = {
+    u.strip().lower().lstrip("@") for u in ADMIN_USERNAMES_RAW.split(",") if u.strip()
+}
+
+ADMIN_USER_IDS_RAW = _get("ADMIN_USER_IDS", "625304326")
+ADMIN_USER_IDS = {
+    int(uid.strip()) for uid in ADMIN_USER_IDS_RAW.split(",") if uid.strip()
+}
+
 
 @dataclass(slots=True)
 class AppSettings:
@@ -101,6 +120,11 @@ class AppSettings:
     user_memory_interval_hours: float = USER_MEMORY_INTERVAL_HOURS
     user_memory_window_hours: float = USER_MEMORY_WINDOW_HOURS
 
+    # Chat allowlist settings
+    allowed_chat_ids: set[int] = None  # type: ignore
+    admin_usernames: set[str] = None  # type: ignore
+    admin_user_ids: set[int] = None  # type: ignore
+
     # Telegram settings
     telegram_max_video_size: int = TELEGRAM_FILE_LIMIT_BYTES
     telegram_upload_timeout: int = TELEGRAM_UPLOAD_TIMEOUT
@@ -125,6 +149,12 @@ class AppSettings:
             self.media_image_extensions = MEDIA_IMAGE_EXTENSIONS.copy()
         if self.media_audio_extensions is None:
             self.media_audio_extensions = MEDIA_AUDIO_EXTENSIONS.copy()
+        if self.allowed_chat_ids is None:
+            self.allowed_chat_ids = ALLOWED_CHAT_IDS.copy()
+        if self.admin_usernames is None:
+            self.admin_usernames = ADMIN_USERNAMES.copy()
+        if self.admin_user_ids is None:
+            self.admin_user_ids = ADMIN_USER_IDS.copy()
 
 
 def load_config() -> AppSettings:

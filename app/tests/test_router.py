@@ -40,3 +40,10 @@ def test_user_memory_handler_registered_before_generic_mention():
     group0 = _names(app.handlers[0])
     assert "handle_user_memory" in group0
     assert group0.index("handle_user_memory") < group0.index("handle_mention")
+
+
+def test_check_chat_allowlist_registered_in_group_minus_one():
+    app = _FakeApp()
+    register(app)
+    group_minus_one = _names(app.handlers[-1])
+    assert "check_chat_allowlist" in group_minus_one

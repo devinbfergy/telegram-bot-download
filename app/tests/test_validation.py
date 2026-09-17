@@ -1,16 +1,20 @@
 """Tests for validation utilities."""
 
+from unittest.mock import MagicMock
+
 import pytest
 
-from app.core.exceptions import UnsupportedURLError, SizeLimitExceeded
+from app.config.settings import AppSettings
+from app.core.exceptions import SizeLimitExceeded, UnsupportedURLError
 from app.utils.validation import (
-    extract_url,
-    validate_url,
-    enforce_size_limit,
-    truncate_caption,
-    summarize_description,
-    TELEGRAM_CAPTION_LIMIT,
     DESCRIPTION_WORD_LIMIT,
+    TELEGRAM_CAPTION_LIMIT,
+    enforce_size_limit,
+    extract_url,
+    is_chat_allowed,
+    summarize_description,
+    truncate_caption,
+    validate_url,
 )
 
 
@@ -197,3 +201,57 @@ def test_summarize_description_custom_word_limit():
     text = "One two three four five six seven eight nine ten"
     result = summarize_description(text, word_limit=5)
     assert result == "One two three four five..."
+
+
+def test_is_chat_allowed_allowed_group():
+    settings = AppSettings(
+        allowed_chat_ids={-1001400184101, -5199749336},
+        admin_usernames={"megadevx"},
+        admin_user_ids={625304326},
+    )
+    update = MagicMock()
+    update.effective_chat.id = -1001400184101
+    assert is_chat_allowed(update, settings) is True
+
+    update.effective_chat.id = -5199749336
+    assert is_chat_allowed(update, settings) is True
+
+
+def test_is_chat_allowed_blocked_group():
+    settings = AppSettings(
+        allowed_chat_ids={-1001400184101, -5199749336},
+        admin_usernames={"megadevx"},
+        admin_user_ids={625304326},
+    )
+    update = MagicMock()
+    update.effective_chat.id = -5505389998  # Gorks torment
+    update.effective_chat.type = "group"
+    assert is_chat_allowed(update, settings) is False
+
+
+def test_is_chat_allowed_creator_dm():
+    settings = AppSettings(
+        allowed_chat_ids={-1001400184101, -5199749336},
+        admin_usernames={"megadevx"},
+        admin_user_ids={625304326},
+    )
+    update = MagicMock()
+    update.effective_chat.id = 999999
+    update.effective_chat.type = "private"
+    update.effective_user.username = "megadevx"
+    update.effective_user.id = 625304326
+    assert is_chat_allowed(update, settings) is True
+
+
+def test_is_chat_allowed_stranger_dm():
+    settings = AppSettings(
+        allowed_chat_ids={-1001400184101, -5199749336},
+        admin_usernames={"megadevx"},
+        admin_user_ids={625304326},
+    )
+    update = MagicMock()
+    update.effective_chat.id = 888888
+    update.effective_chat.type = "private"
+    update.effective_user.username = "random_stranger"
+    update.effective_user.id = 111111
+    assert is_chat_allowed(update, settings) is False
