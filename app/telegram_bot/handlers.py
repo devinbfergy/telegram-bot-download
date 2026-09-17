@@ -10,6 +10,7 @@ from app.features.github_issue import open_github_issue
 from app.features.good_bot_catgirl import good_bot_catgirl
 from app.features.mention_responder import respond_to_mention
 from app.features.reprocess_bad_bot import reprocess_bad_bot
+from app.features.user_memory import show_user_memory
 from app.media.detectors import is_image_url, is_tiktok_photo_url, is_video_url
 from app.media.downloader import Downloader
 from app.telegram_bot.status_messenger import StatusMessenger
@@ -217,6 +218,22 @@ async def handle_guys_being_dudes_bot(
         await update.message.reply_text(
             MESSAGES["guys_being_dudes_response"], disable_notification=True
         )
+
+
+async def handle_user_memory(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """
+    Handles '@gork memory' or '@guys_being_dudes_bot memory'.
+    Spits out memories stored for the sender (or the replied-to user).
+    """
+    logger.info(f"handle_user_memory called with update: {update.update_id}")
+
+    if not update.message:
+        return
+
+    settings: AppSettings = context.application.settings["app_settings"]
+    await show_user_memory(update, context, settings)
 
 
 async def handle_mention(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

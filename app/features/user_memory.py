@@ -14,6 +14,7 @@ import logging
 from typing import TYPE_CHECKING
 
 import aiohttp
+from telegram import Update
 from telegram.ext import ContextTypes
 
 from app.utils.database import (
@@ -276,3 +277,59 @@ async def get_memories_prompt_block(
     except Exception:
         logger.exception("user_memory: could not load memories prompt block")
         return ""
+
+
+async def show_user_memory(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    settings: AppSettings,
+) -> None:
+    """
+    Spits out a quick tidbit about the stored memory for a specific user.
+    If replying to someone, targets the replied user; otherwise targets the sender.
+    """
+    if not update.message:
+        return
+
+    if update.message.reply_to_message and update.message.reply_to_message.from_user:
+        target_user = update.message.reply_to_message.from_user
+    else:
+        target_user = update.message.from_user
+
+    if not target_user:
+        return
+
+    name = target_user.first_name or (
+        f"@{target_user.username}" if target_user.username else "you"
+    )
+    db_path = str(settings.db_path)
+    mem = await get_user_memory(db_path, target_user.id)
+
+    if not mem or not mem.memory or not mem.memory.strip():
+        await update.message.reply_text(
+            f"I don't have any memories stored for {name} yet. Chat a bit more and I'll start taking notes.",
+            disable_notification=True,
+        )
+        return
+
+    memory_text = mem.memory.strip()
+
+    # If Gemini is configured, ask for a quick witty recap
+    if settings.gemini_api_key:
+        tidbit_prompt = (
+            f"You are Gork, a slightly sarcastic, dry, but warm-hearted bot in a group chat of friends.\n"
+            f"Someone asked to see what memories you have on '{name}'.\n\n"
+            f"Here is the memory file on {name}:\n{memory_text}\n\n"
+            "Instructions:\n"
+            "1. Give a quick, witty 1-2 sentence tidbit summarizing what you remember about them.\n"
+            "2. Then present their key traits/facts in 2-3 brief bullet points.\n"
+            "3. Keep the total response under 80 words. Stay dry and quippy."
+        )
+        tidbit = await call_gemini_for_memory(tidbit_prompt, settings)
+        if tidbit:
+            await update.message.reply_text(tidbit, disable_notification=True)
+            return
+
+    # Fallback if Gemini is not available or failed
+    reply = f"🧠 Here's what I have on {name}:\n\n{memory_text}"
+    await update.message.reply_text(reply, disable_notification=True)

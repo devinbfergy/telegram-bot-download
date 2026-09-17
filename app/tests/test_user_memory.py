@@ -14,11 +14,12 @@ from app.features.mention_responder import respond_to_mention
 from app.features.user_memory import (
     call_gemini_for_memory,
     get_memories_prompt_block,
+    show_user_memory,
     update_all_user_memories,
     update_user_memory_from_messages,
     user_memory_cron_job,
 )
-from app.telegram_bot.handlers import log_message_to_db
+from app.telegram_bot.handlers import handle_user_memory, log_message_to_db
 from app.telegram_bot.router import register_jobs
 from app.utils.database import (
     StoredMessage,
@@ -402,3 +403,91 @@ async def test_user_memory_cron_job_execution(mock_update_all, memory_settings):
 
     await user_memory_cron_job(context)
     mock_update_all.assert_called_once_with(memory_settings)
+
+
+@pytest.mark.asyncio
+async def test_show_user_memory_no_memory(memory_settings):
+    update = MagicMock(spec=Update)
+    update.message = AsyncMock()
+    update.message.reply_to_message = None
+    update.message.from_user = MagicMock()
+    update.message.from_user.id = 1234
+    update.message.from_user.first_name = "Newbie"
+    update.message.from_user.username = "newbie"
+
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+    await show_user_memory(update, context, memory_settings)
+
+    update.message.reply_text.assert_called_once()
+    args, kwargs = update.message.reply_text.call_args
+    assert "don't have any memories" in args[0]
+    assert kwargs["disable_notification"] is True
+
+
+@pytest.mark.asyncio
+@patch("app.features.user_memory.call_gemini_for_memory", new_callable=AsyncMock)
+async def test_show_user_memory_with_gemini(mock_call_gemini, memory_settings):
+    db_path = str(memory_settings.db_path)
+    await set_user_memory(db_path, 4321, "alice", "Alice", "- Loves tea and puzzles.")
+
+    mock_call_gemini.return_value = "Here is Alice. Sarcastic tea lover:\n- Solves puzzles daily."
+
+    update = MagicMock(spec=Update)
+    update.message = AsyncMock()
+    update.message.reply_to_message = None
+    update.message.from_user = MagicMock()
+    update.message.from_user.id = 4321
+    update.message.from_user.first_name = "Alice"
+    update.message.from_user.username = "alice"
+
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+    await show_user_memory(update, context, memory_settings)
+
+    update.message.reply_text.assert_called_once_with(
+        "Here is Alice. Sarcastic tea lover:\n- Solves puzzles daily.",
+        disable_notification=True,
+    )
+
+
+@pytest.mark.asyncio
+@patch("app.features.user_memory.call_gemini_for_memory", new_callable=AsyncMock)
+async def test_show_user_memory_replied_user(mock_call_gemini, memory_settings):
+    db_path = str(memory_settings.db_path)
+    await set_user_memory(db_path, 9999, "target", "TargetUser", "- Loves robots.")
+
+    mock_call_gemini.return_value = "TargetUser is an engineer."
+
+    update = MagicMock(spec=Update)
+    update.message = AsyncMock()
+    # User replying to someone else
+    update.message.from_user = MagicMock()
+    update.message.from_user.id = 1111
+
+    replied = MagicMock()
+    replied.from_user = MagicMock()
+    replied.from_user.id = 9999
+    replied.from_user.first_name = "TargetUser"
+    replied.from_user.username = "target"
+    update.message.reply_to_message = replied
+
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+    await show_user_memory(update, context, memory_settings)
+
+    update.message.reply_text.assert_called_once_with(
+        "TargetUser is an engineer.",
+        disable_notification=True,
+    )
+
+
+@pytest.mark.asyncio
+@patch("app.telegram_bot.handlers.show_user_memory", new_callable=AsyncMock)
+async def test_handle_user_memory_handler(mock_show, memory_settings):
+    update = MagicMock(spec=Update)
+    update.message = AsyncMock()
+    update.update_id = 123
+    context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
+    context.application = MagicMock()
+    context.application.settings = {"app_settings": memory_settings}
+
+    await handle_user_memory(update, context)
+    mock_show.assert_called_once_with(update, context, memory_settings)

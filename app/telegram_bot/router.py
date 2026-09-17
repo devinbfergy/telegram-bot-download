@@ -89,6 +89,15 @@ def register(application: Application) -> Application:
     )
     logger.info("Registered handle_guys_being_dudes_mention handler")
 
+    # "@gork memory" or "@guys_being_dudes_bot memory" → show user memories
+    application.add_handler(
+        MessageHandler(
+            filters.TEXT & filters.Regex(r"(?i)(@gork|@guys_being_dudes_bot)\s+memory"),
+            handlers.handle_user_memory,
+        )
+    )
+    logger.info("Registered handle_user_memory handler")
+
     # Generic @gork or @guys_being_dudes_bot mention (anything not caught above)
     application.add_handler(
         MessageHandler(

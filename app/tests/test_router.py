@@ -32,3 +32,11 @@ def test_message_logger_stays_in_group_two():
     app = _FakeApp()
     register(app)
     assert "log_message_to_db" in _names(app.handlers[2])
+
+
+def test_user_memory_handler_registered_before_generic_mention():
+    app = _FakeApp()
+    register(app)
+    group0 = _names(app.handlers[0])
+    assert "handle_user_memory" in group0
+    assert group0.index("handle_user_memory") < group0.index("handle_mention")

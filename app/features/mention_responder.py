@@ -37,6 +37,7 @@ and you should, especially for anything factual or current events.
 
 About your capabilities and how people call and talk to you:
 - Direct Chat & Mentions: People talk to you by tagging @gork or @guys_being_dudes_bot. You chat about anything, answer questions, joke around, or give advice.
+- Addressing People: Always address or refer to the person you are speaking with by their real first name (e.g. "Devin" or "Ryan"), not their Telegram @handle or username. Respond directly to the person who sent the current incoming message.
 - Media Downloader: Whenever users drop links to videos, reels, shorts, or photos (TikTok, Instagram, YouTube, Twitter/X, Reddit, Facebook, etc.), you automatically download and send the media into the chat.
 - Fact Checking: When someone replies to a message with "@gork is this real", you fact-check the claim using Google Search and deliver a direct verdict.
 - GitHub Issue Creation: When someone says "@gork open issue" or "@gork open an issue", you summarize recent conversation context and create an issue on the project's GitHub repo.
@@ -56,7 +57,14 @@ def _format_history(messages: list[StoredMessage]) -> str:
         return "(no recent messages — you're flying blind)"
     lines: list[str] = []
     for msg in messages:
-        display_name = msg.username or msg.first_name or "unknown"
+        if msg.first_name and msg.username:
+            display_name = f"{msg.first_name} (@{msg.username})"
+        elif msg.first_name:
+            display_name = msg.first_name
+        elif msg.username:
+            display_name = f"@{msg.username}"
+        else:
+            display_name = "unknown"
         lines.append(f"{display_name}: {msg.message_text}")
     return "\n".join(lines)
 
@@ -112,12 +120,84 @@ async def respond_to_mention(
 
     memory_section = f"\n{memories_block}\n" if memories_block else ""
 
+    sender = update.message.from_user
+    sender_first = (
+        sender.first_name
+        if sender and isinstance(getattr(sender, "first_name", None), str)
+        else None
+    )
+    sender_last = (
+        sender.last_name
+        if sender and isinstance(getattr(sender, "last_name", None), str)
+        else None
+    )
+    sender_uname = (
+        sender.username
+        if sender and isinstance(getattr(sender, "username", None), str)
+        else None
+    )
+    name_parts = [p for p in (sender_first, sender_last) if p]
+    sender_full = " ".join(name_parts)
+    if sender_full and sender_uname:
+        sender_display = f"{sender_full} (@{sender_uname})"
+    elif sender_full:
+        sender_display = sender_full
+    elif sender_uname:
+        sender_display = f"@{sender_uname}"
+    else:
+        sender_display = "someone"
+
+    preferred_name = sender_first or (f"@{sender_uname}" if sender_uname else "friend")
+
+    reply_context = ""
+    if update.message.reply_to_message and update.message.reply_to_message.from_user:
+        replied_user = update.message.reply_to_message.from_user
+        r_first = (
+            replied_user.first_name
+            if isinstance(getattr(replied_user, "first_name", None), str)
+            else None
+        )
+        r_last = (
+            replied_user.last_name
+            if isinstance(getattr(replied_user, "last_name", None), str)
+            else None
+        )
+        r_uname = (
+            replied_user.username
+            if isinstance(getattr(replied_user, "username", None), str)
+            else None
+        )
+        r_parts = [p for p in (r_first, r_last) if p]
+        r_full = " ".join(r_parts)
+        if r_full and r_uname:
+            r_display = f"{r_full} (@{r_uname})"
+        elif r_full:
+            r_display = r_full
+        elif r_uname:
+            r_display = f"@{r_uname}"
+        else:
+            r_display = "someone"
+        raw_r_text = (
+            update.message.reply_to_message.text
+            or update.message.reply_to_message.caption
+            or ""
+        )
+        r_text = raw_r_text if isinstance(raw_r_text, str) else ""
+        if r_text:
+            reply_context = f"\n(Replying to {r_display}: \"{r_text}\")"
+        else:
+            reply_context = f"\n(Replying to {r_display})"
+
     full_prompt = _SYSTEM_PROMPT.format(
         chat_history=history_block,
         memory_section=memory_section,
     )
     if trigger_text:
-        full_prompt += f"\n\nMessage: {trigger_text}"
+        full_prompt += (
+            f"\n\nCurrent incoming message from {sender_display} "
+            f"(address them as '{preferred_name}'):{reply_context}\n"
+            f"\"{trigger_text}\""
+        )
 
     api_url = GEMINI_API_URL
     payload = {
