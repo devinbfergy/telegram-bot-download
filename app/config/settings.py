@@ -58,6 +58,9 @@ GEMINI_API_KEY = _get("GEMINI_API_KEY", required=False)
 AI_TRUTH_CHECK_ENABLED = _get("AI_TRUTH_CHECK_ENABLED", "0") in {"1", "true", "True"}
 
 INSTAGRAM_SESSIONID = _get("INSTAGRAM_SESSIONID", required=False)
+# Netscape cookies.txt kept fresh by scripts/instagram_session/refresh_session.py
+# and mounted into the container. Takes precedence over INSTAGRAM_SESSIONID.
+INSTAGRAM_COOKIE_FILE = _get("INSTAGRAM_COOKIE_FILE", required=False)
 
 # GitHub settings
 GITHUB_TOKEN = _get("GITHUB_TOKEN", required=False)
@@ -65,6 +68,11 @@ GITHUB_REPO = _get("GITHUB_REPO", required=False)  # Format: "owner/repo"
 
 # SQLite message store (mounted volume keeps it across container restarts)
 SQLITE_DB_PATH = Path(_get("SQLITE_DB_PATH", "/data/bot_messages.db"))
+
+# User memory feature settings
+USER_MEMORY_ENABLED = _get("USER_MEMORY_ENABLED", "1") in {"1", "true", "True"}
+USER_MEMORY_INTERVAL_HOURS = float(_get("USER_MEMORY_INTERVAL_HOURS", "24.0"))
+USER_MEMORY_WINDOW_HOURS = float(_get("USER_MEMORY_WINDOW_HOURS", "24.0"))
 
 
 @dataclass(slots=True)
@@ -79,6 +87,7 @@ class AppSettings:
 
     # Instagram authentication
     instagram_sessionid: str = INSTAGRAM_SESSIONID
+    instagram_cookie_file: str = INSTAGRAM_COOKIE_FILE
 
     # GitHub settings
     github_token: str = GITHUB_TOKEN
@@ -86,6 +95,11 @@ class AppSettings:
 
     # SQLite message store
     db_path: Path = SQLITE_DB_PATH
+
+    # User memory settings
+    user_memory_enabled: bool = USER_MEMORY_ENABLED
+    user_memory_interval_hours: float = USER_MEMORY_INTERVAL_HOURS
+    user_memory_window_hours: float = USER_MEMORY_WINDOW_HOURS
 
     # Telegram settings
     telegram_max_video_size: int = TELEGRAM_FILE_LIMIT_BYTES

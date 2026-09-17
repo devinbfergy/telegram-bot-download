@@ -16,3 +16,6 @@ downloads/*
 gallery-dl/*
 gallery-dl/*/*
 gallery-dl
+# Instagram session secrets (mounted into container)
+secrets/*
+!secrets/.gitkeep

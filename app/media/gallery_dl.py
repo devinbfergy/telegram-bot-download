@@ -2,12 +2,14 @@ import json
 import logging
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 from telegram import InputMediaPhoto, Message
 
 from app.config.settings import AppSettings
 from app.config.strings import MESSAGES
+from app.media.detectors import is_instagram_url
 from app.media.slideshow import create_slideshow_from_media
 from app.telegram_bot.status_messenger import StatusMessenger
 from app.utils.concurrency import run_blocking
@@ -15,6 +17,33 @@ from app.utils.filesystem import create_temp_dir
 from app.utils.validation import truncate_caption
 
 logger = logging.getLogger(__name__)
+
+
+def resolve_instagram_cookiefile(settings: AppSettings, temp_dir: Path) -> str | None:
+    """
+    Resolve a Netscape cookies.txt path for Instagram downloads.
+
+    Precedence:
+      1. INSTAGRAM_COOKIE_FILE (kept fresh by scripts/instagram_session/refresh_session.py).
+      2. INSTAGRAM_SESSIONID env var, synthesized into a temp cookies.txt.
+
+    Returns None when no credentials are available.
+    """
+    cookie_file = settings.instagram_cookie_file
+    if cookie_file and Path(cookie_file).is_file():
+        return cookie_file
+
+    if settings.instagram_sessionid:
+        path = temp_dir / "instagram_cookies.txt"
+        expiry = int(time.time()) + 365 * 24 * 3600
+        path.write_text(
+            "# Netscape HTTP Cookie File\n"
+            f".instagram.com\tTRUE\t/\tTRUE\t{expiry}\tsessionid\t{settings.instagram_sessionid}\n",
+            encoding="utf-8",
+        )
+        return str(path)
+
+    return None
 
 
 async def download_and_send_with_gallery_dl(
@@ -51,9 +80,12 @@ async def download_and_send_with_gallery_dl(
         )
 
         # Run gallery-dl in a separate thread to avoid blocking asyncio loop
-        await run_blocking(
-            _run_gallery_dl_subprocess, url, temp_dir, settings.instagram_sessionid
+        cookie_file = (
+            resolve_instagram_cookiefile(settings, temp_dir)
+            if is_instagram_url(url)
+            else None
         )
+        await run_blocking(_run_gallery_dl_subprocess, url, temp_dir, cookie_file or "")
 
         all_files = list(temp_dir.rglob("*.*"))
         if not all_files:
@@ -145,9 +177,15 @@ async def download_and_send_with_gallery_dl(
         return False
     except subprocess.CalledProcessError as cpe:
         logger.error(f"gallery-dl subprocess failed for {url}: {cpe}", exc_info=True)
-        await status_messenger.edit_message(
-            MESSAGES["gallery_dl_error"].format(error="Download failed")
-        )
+        err_text = cpe.stderr.decode("utf-8", errors="ignore") if cpe.stderr else ""
+        if is_instagram_url(url) and (
+            "login" in err_text.lower() or "401" in err_text or "403" in err_text
+        ):
+            await status_messenger.edit_message(MESSAGES["instagram_login_required"])
+        else:
+            await status_messenger.edit_message(
+                MESSAGES["gallery_dl_error"].format(error="Download failed")
+            )
         return False
     except subprocess.TimeoutExpired as te:
         logger.error(f"gallery-dl timed out for {url}: {te}")
@@ -165,20 +203,13 @@ async def download_and_send_with_gallery_dl(
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-def _run_gallery_dl_subprocess(
-    url: str, temp_dir: Path, instagram_sessionid: str = ""
-) -> None:
+def _run_gallery_dl_subprocess(url: str, temp_dir: Path, cookie_file: str = "") -> None:
     """Helper to run gallery-dl in a subprocess with metadata extraction."""
     try:
         cmd = ["gallery-dl", "-d", str(temp_dir), "--write-info-json"]
 
-        if instagram_sessionid and "instagram.com" in url:
-            cmd.extend(
-                [
-                    "-o",
-                    f"extractor.instagram.cookies={{'sessionid':'{instagram_sessionid}'}}",
-                ]
-            )
+        if cookie_file and is_instagram_url(url):
+            cmd.extend(["--cookies", cookie_file])
 
         cmd.append(url)
 

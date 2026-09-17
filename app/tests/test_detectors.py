@@ -5,8 +5,10 @@ from yt_dlp.utils import DownloadError
 from app.media.detectors import (
     is_image_url,
     is_instagram_reel_url,
+    is_instagram_url,
     is_slideshow,
     is_tiktok_photo_url,
+    is_tiktok_url,
     is_video_url,
     is_youtube_shorts_url,
 )
@@ -156,6 +158,8 @@ def test_is_instagram_reel_url():
     assert is_instagram_reel_url("https://instagram.com/reel/ABC123/")
     assert is_instagram_reel_url("https://www.instagram.com/p/XYZ789/")
     assert is_instagram_reel_url("https://m.instagram.com/reel/TEST123/")
+    assert is_instagram_reel_url("https://www.instagram.com/reel/Db9-jLlhPvt/")
+    assert is_instagram_reel_url("https://www.instagram.com/share/reel/ABC123/")
 
 
 def test_is_not_instagram_reel_url():
@@ -172,6 +176,18 @@ def test_is_tiktok_photo_url():
 def test_is_not_tiktok_photo_url():
     assert not is_tiktok_photo_url("https://www.tiktok.com/@user/video/1234567890")
     assert not is_tiktok_photo_url("https://example.com/@user/photo/1234567890")
+
+
+def test_is_tiktok_url_includes_short_links():
+    assert is_tiktok_url("https://www.tiktok.com/t/ZThwtJ8cX")
+    assert is_tiktok_url("https://vm.tiktok.com/ZThwtJ8cX/")
+    assert is_tiktok_url("https://www.tiktok.com/@user/video/123")
+    assert not is_tiktok_url("https://www.instagram.com/reel/abc")
+
+
+def test_is_instagram_url():
+    assert is_instagram_url("https://www.instagram.com/reel/Db9-jLlhPvt/")
+    assert not is_instagram_url("https://www.tiktok.com/t/ZThwtJ8cX")
 
 
 def test_is_slideshow_tiktok():

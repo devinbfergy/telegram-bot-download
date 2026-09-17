@@ -15,7 +15,7 @@ YOUTUBE_SHORTS_PATTERN = re.compile(
 )
 INSTAGRAM_REEL_PATTERN = re.compile(
     r"(?:https?://)?(?:www\.)?(?:m\.)?"
-    r"(?:instagram\.com/(?:reel|reels|p)/)"
+    r"(?:instagram\.com/(?:reel|reels|p|share|stories|tv)/)"
     r"([a-zA-Z0-9_-]+)"
 )
 TIKTOK_PHOTO_PATTERN = re.compile(r"tiktok\.com/@[^/]+/photo/\d+")
@@ -32,6 +32,17 @@ def is_youtube_shorts_url(url: str) -> bool:
 def is_instagram_reel_url(url: str) -> bool:
     """Checks if the URL is an Instagram reel or post link."""
     return bool(INSTAGRAM_REEL_PATTERN.search(url))
+
+
+def is_instagram_url(url: str) -> bool:
+    """Checks if the URL is any Instagram link."""
+    return "instagram.com" in url.lower()
+
+
+def is_tiktok_url(url: str) -> bool:
+    """Checks if the URL is any TikTok link, including short /t/ and vm. links."""
+    lowered = url.lower()
+    return "tiktok.com" in lowered or "vm.tiktok.com" in lowered
 
 
 def is_tiktok_photo_url(url: str) -> bool:

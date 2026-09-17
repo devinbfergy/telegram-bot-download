@@ -10,10 +10,10 @@ from app.features.github_issue import open_github_issue
 from app.features.good_bot_catgirl import good_bot_catgirl
 from app.features.mention_responder import respond_to_mention
 from app.features.reprocess_bad_bot import reprocess_bad_bot
-from app.media.downloader import Downloader
 from app.media.detectors import is_image_url, is_tiktok_photo_url, is_video_url
+from app.media.downloader import Downloader
 from app.telegram_bot.status_messenger import StatusMessenger
-from app.utils.database import store_message
+from app.utils.database import record_user_interaction, store_message
 from app.utils.validation import extract_url
 
 logger = logging.getLogger(__name__)
@@ -260,10 +260,14 @@ async def handle_guys_being_dudes_mention(
 
 async def log_message_to_db(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
-    Passively logs every text message to SQLite for use as conversation context.
+    Passively logs every text message or caption to SQLite for use as conversation context.
     Runs in its own handler group so it never interferes with other handlers.
     """
-    if not update.message or not update.message.text:
+    if not update.message:
+        return
+
+    text = update.message.text or update.message.caption
+    if not text:
         return
 
     chat_id = update.effective_chat.id
@@ -271,14 +275,13 @@ async def log_message_to_db(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     user_id = user.id if user else None
     username = user.username if user else None
     first_name = user.first_name if user else None
-    text = update.message.text
 
     settings: AppSettings = context.application.settings["app_settings"]
     db_path = str(settings.db_path)
 
     try:
         await store_message(db_path, chat_id, user_id, username, first_name, text)
-    except Exception as exc:  # noqa: BLE001
-        logger.error(
-            "log_message_to_db: failed to store message: %s", exc, exc_info=True
-        )
+        if user_id is not None and getattr(settings, "user_memory_enabled", True):
+            await record_user_interaction(db_path, user_id, username, first_name)
+    except Exception:
+        logger.exception("log_message_to_db: failed to store message")

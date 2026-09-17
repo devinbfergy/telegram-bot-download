@@ -15,6 +15,14 @@ def settings():
     return AppSettings(gemini_api_key="test_key")
 
 
+def _gemini_output(text: str) -> dict:
+    return {
+        "steps": [
+            {"type": "model_output", "content": [{"text": text, "annotations": []}]}
+        ]
+    }
+
+
 def _make_session_mock(MockClientSession, mock_response):
     """Wire up the three-layer aiohttp async context manager mock."""
     mock_post_ctx = AsyncMock()
@@ -46,20 +54,16 @@ async def test_ai_truth_check_success(MockClientSession, _mock_db, settings):
     context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
 
     mock_response = AsyncMock()
-    mock_response.raise_for_status = AsyncMock()
+    mock_response.raise_for_status = MagicMock()
     mock_response.json = AsyncMock(
-        return_value={
-            "candidates": [
-                {"content": {"parts": [{"text": "Indeed, the sky is blue."}]}}
-            ]
-        }
+        return_value=_gemini_output("Indeed, the sky is blue.")
     )
     _make_session_mock(MockClientSession, mock_response)
 
     await ai_truth_check(update, context, settings)
 
     update.message.reply_text.assert_called_once_with(
-        "Indeed, the sky is blue.", disable_notification=True
+        "Indeed, the sky is blue.", parse_mode=None, disable_notification=True
     )
 
 
@@ -163,7 +167,7 @@ async def test_ai_truth_check_invalid_response_structure(MockClientSession, _moc
     settings = AppSettings(gemini_api_key="test_key")
 
     mock_response = AsyncMock()
-    mock_response.raise_for_status = AsyncMock()
+    mock_response.raise_for_status = MagicMock()
     mock_response.json = AsyncMock(return_value={"invalid": "structure"})
     _make_session_mock(MockClientSession, mock_response)
 
@@ -171,6 +175,7 @@ async def test_ai_truth_check_invalid_response_structure(MockClientSession, _moc
 
     update.message.reply_text.assert_called_once_with(
         MESSAGES["error_generic"],
+        parse_mode=None,
         disable_notification=True,
     )
 
@@ -192,17 +197,14 @@ async def test_ai_truth_check_uses_caption_when_no_text(MockClientSession, _mock
     settings = AppSettings(gemini_api_key="test_key")
 
     mock_response = AsyncMock()
-    mock_response.raise_for_status = AsyncMock()
-    mock_response.json = AsyncMock(
-        return_value={
-            "candidates": [{"content": {"parts": [{"text": "Response to caption"}]}}]
-        }
-    )
+    mock_response.raise_for_status = MagicMock()
+    mock_response.json = AsyncMock(return_value=_gemini_output("Response to caption"))
     _make_session_mock(MockClientSession, mock_response)
 
     await ai_truth_check(update, context, settings)
 
     update.message.reply_text.assert_called_once_with(
         "Response to caption",
+        parse_mode=None,
         disable_notification=True,
     )

@@ -35,7 +35,7 @@ GEMINI_API_KEY=your_gemini_api_key
 # Optional
 GITHUB_TOKEN=your_github_pat          # for @gork open issue
 GITHUB_REPO=owner/repo                # for @gork open issue
-INSTAGRAM_SESSIONID=your_sessionid   # for Instagram photo downloads
+INSTAGRAM_SESSIONID=your_sessionid   # optional fallback if cookies.txt is missing
 LOG_LEVEL=INFO                        # DEBUG | INFO | WARNING | ERROR
 LOG_JSON=0                            # 1 = structured JSON logs
 ```
@@ -50,19 +50,31 @@ LOG_JSON=0                            # 1 = structured JSON logs
 | `GEMINI_API_KEY`    | Google Gemini API key — powers all Gork AI features      | Yes (for AI) |
 | `GITHUB_TOKEN`      | GitHub personal access token for issue creation          | No       |
 | `GITHUB_REPO`       | `owner/repo` slug for issue creation                     | No       |
-| `INSTAGRAM_SESSIONID` | Instagram session cookie for photo post downloads      | No       |
+| `INSTAGRAM_SESSIONID` | Instagram session cookie (fallback if cookies.txt is missing) | No |
+| `INSTAGRAM_COOKIE_FILE` | Path to Netscape cookies.txt (set automatically in compose) | No |
 | `LOG_LEVEL`         | Logging verbosity (default: `INFO`)                      | No       |
 | `LOG_JSON`          | Set to `1` for structured JSON logs (default: `0`)       | No       |
 
-### Getting the Instagram session cookie
+### Instagram session cookies
 
-Instagram photo posts require authentication. To enable them:
+Instagram blocks unauthenticated downloads. Keep a live session on the host and mount it into the container:
 
-1. Log into Instagram in your browser and open DevTools (F12).
-2. Go to **Application → Cookies → https://www.instagram.com**.
-3. Copy the value of the `sessionid` cookie and add it to `.env`.
+1. Log into [instagram.com](https://www.instagram.com) in Chrome.
+2. From an **elevated** PowerShell (Chrome ≥ 130 uses app-bound cookie encryption):
 
-The cookie expires every few weeks — repeat when downloads start failing.
+```powershell
+uv run scripts/instagram_session/refresh_session.py
+```
+
+This writes `secrets/instagram_cookies.txt` (gitignored). `docker-compose.yml` bind-mounts `./secrets` into the container at `/data/secrets`.
+
+3. Register a scheduled refresh (every 6 hours, highest privileges):
+
+```powershell
+.\scripts\instagram_session\register_task.ps1
+```
+
+Optional fallback: set `INSTAGRAM_SESSIONID` in `.env`. The cookie file takes precedence when present.
 
 ---
 
@@ -115,7 +127,7 @@ The bot stores the last 24 hours of chat messages in a SQLite database to give G
 
 - The volume **survives** `docker compose up --build -d` (normal deploys).
 - The volume is **deleted** only by `docker compose down -v` (explicit wipe).
-- No data is written to the host filesystem.
+- Instagram cookies live on the host at `secrets/instagram_cookies.txt` (bind-mounted read-only).
 
 ---
 

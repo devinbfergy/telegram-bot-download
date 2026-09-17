@@ -6,21 +6,26 @@ from telegram import Message
 from yt_dlp import YoutubeDL
 from yt_dlp.utils import DownloadError as YtDlpDownloadError
 
-from app.config.settings import AppSettings, TELEGRAM_FILE_LIMIT_MB
+from app.config.settings import TELEGRAM_FILE_LIMIT_MB, AppSettings
 from app.config.strings import MESSAGES
 from app.core.exceptions import ExtractionFailed, SizeLimitExceeded
 from app.media.detectors import (
-    is_slideshow,
-    is_youtube_shorts_url,
     is_instagram_reel_url,
+    is_instagram_url,
+    is_slideshow,
+    is_tiktok_url,
+    is_youtube_shorts_url,
 )
-from app.media.gallery_dl import download_and_send_with_gallery_dl
+from app.media.gallery_dl import (
+    download_and_send_with_gallery_dl,
+    resolve_instagram_cookiefile,
+)
 from app.media.inspection import detect_frozen_frames
 from app.media.ytdlp_profiles import PROFILES
 from app.telegram_bot.status_messenger import StatusMessenger
 from app.utils.concurrency import run_blocking
 from app.utils.filesystem import create_temp_dir, safe_cleanup
-from app.utils.validation import truncate_caption, summarize_description
+from app.utils.validation import summarize_description, truncate_caption
 
 logger = logging.getLogger(__name__)
 
@@ -55,12 +60,32 @@ class Downloader:
                     profile_name = "shorts"
                 elif is_instagram:
                     profile_name = "instagram"
+                elif is_tiktok_url(url):
+                    profile_name = "tiktok"
                 else:
                     profile_name = "default"
 
             ydl_opts = PROFILES[profile_name]()
 
             logger.info(f"Using '{profile_name}' profile for: {url}")
+
+            # Attach Instagram credentials (mounted cookies.txt or sessionid env)
+            instagram_cookiefile: str | None = None
+            if is_instagram_url(url):
+                instagram_cookiefile = resolve_instagram_cookiefile(
+                    self.settings, temp_dir
+                )
+                if instagram_cookiefile:
+                    ydl_opts["cookiefile"] = instagram_cookiefile
+                    logger.info(
+                        "Using Instagram cookie file for yt-dlp: %s",
+                        instagram_cookiefile,
+                    )
+                else:
+                    logger.warning(
+                        "Instagram URL but no credentials configured "
+                        "(INSTAGRAM_COOKIE_FILE / INSTAGRAM_SESSIONID); download will likely fail"
+                    )
 
             # The template from ytdlp_profiles.py is just a filename, not a path
             # We need to join it with our temp_dir
@@ -124,6 +149,8 @@ class Downloader:
                     temp_dir / os.path.basename(fallback_opts["outtmpl"])
                 )
                 fallback_opts["outtmpl"] = fallback_outtmpl_str
+                if instagram_cookiefile:
+                    fallback_opts["cookiefile"] = instagram_cookiefile
                 info_dict = await run_blocking(
                     self._run_ytdlp_download, url, fallback_opts
                 )

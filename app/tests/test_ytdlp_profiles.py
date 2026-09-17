@@ -2,14 +2,23 @@ from app.media.ytdlp_profiles import (
     PROFILES,
     get_default_profile,
     get_fallback_profile,
+    get_instagram_profile,
     get_shorts_profile,
     get_telegram_optimization_profile,
+    get_tiktok_profile,
 )
 
 
 def test_profiles_dict_contains_all_profiles():
     """Test that PROFILES dict contains all expected profile names."""
-    expected_profiles = {"default", "shorts", "instagram", "fallback", "telegram"}
+    expected_profiles = {
+        "default",
+        "shorts",
+        "instagram",
+        "tiktok",
+        "fallback",
+        "telegram",
+    }
     assert set(PROFILES.keys()) == expected_profiles
 
 
@@ -89,6 +98,11 @@ def test_fallback_profile_has_different_outtmpl():
 
     assert default["outtmpl"] != fallback["outtmpl"]
     assert "_fallback" in fallback["outtmpl"]
+
+
+def test_tiktok_and_instagram_profiles_impersonate_chrome():
+    assert get_tiktok_profile()["impersonate"] == "chrome"
+    assert get_instagram_profile()["impersonate"] == "chrome"
 
 
 def test_telegram_profile_has_video_scaling():

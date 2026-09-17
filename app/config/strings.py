@@ -27,6 +27,12 @@ MESSAGES = {
     "gallery_dl_sending_images": "⬆️ Sending images (gallery-dl)...",
     "gallery_dl_no_suitable_media": "❌ No suitable media found to send.",
     "gallery_dl_error": "❌ gallery-dl error: {error}",
+    # Instagram authentication
+    "instagram_login_required": (
+        "❌ Instagram blocked this download (login required or session expired). "
+        "Refresh the session with scripts/instagram_session/refresh_session.py "
+        "or set INSTAGRAM_SESSIONID."
+    ),
     # Bad bot reprocessing
     "reprocessing": "🔄 Reprocessing with better quality...",
     "reprocessing_no_url": "❌ Could not find URL in the original message.",

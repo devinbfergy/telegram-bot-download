@@ -6,6 +6,7 @@ from telegram.ext import ContextTypes
 
 from app.config.settings import AppSettings
 from app.config.strings import MESSAGES
+from app.features.user_memory import get_memories_prompt_block
 from app.utils.database import StoredMessage, get_recent_messages
 
 logger = logging.getLogger(__name__)
@@ -23,7 +24,7 @@ Rules:
 - Use your Google Search tool to verify claims. Cite what you found.
 - If it's opinion or unverifiable, make a dry observation about it.
 - If it's obviously false, feel free to be a little dramatic about it.
-
+{memory_section}
 Recent chat context (last 10 minutes — background only, don't fact-check this):
 {chat_history}
 
@@ -83,11 +84,28 @@ async def ai_truth_check(
 
     # Fetch recent chat history for context.
     chat_id = update.effective_chat.id
-    recent = await get_recent_messages(str(settings.db_path), chat_id, minutes=10)
+    db_path = str(settings.db_path)
+    recent = await get_recent_messages(db_path, chat_id, minutes=10)
     chat_history = _format_history(recent)
+
+    user_ids: set[int] = set()
+    if update.message.from_user and update.message.from_user.id:
+        user_ids.add(update.message.from_user.id)
+    if update.message.reply_to_message and update.message.reply_to_message.from_user:
+        user_ids.add(update.message.reply_to_message.from_user.id)
+    for msg in recent:
+        if msg.user_id:
+            user_ids.add(msg.user_id)
+
+    memories_block = ""
+    if settings.user_memory_enabled and user_ids:
+        memories_block = await get_memories_prompt_block(db_path, user_ids)
+
+    memory_section = f"\n{memories_block}\n" if memories_block else ""
 
     prompt = SYSTEM_PROMPT_TEMPLATE.format(
         chat_history=chat_history,
+        memory_section=memory_section,
         original_text=original_text,
     )
 

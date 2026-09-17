@@ -9,14 +9,20 @@ services:
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
       - GITHUB_REPO=${GITHUB_REPO:-}
       - INSTAGRAM_SESSIONID=${INSTAGRAM_SESSIONID:-}
+      # Netscape cookies.txt kept fresh by scripts/instagram_session/refresh_session.py
+      # (mounted read-only below). Takes precedence over INSTAGRAM_SESSIONID.
+      - INSTAGRAM_COOKIE_FILE=/data/secrets/instagram_cookies.txt
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LOG_JSON=${LOG_JSON:-0}
       # SQLite database path inside the container.
       # The named volume below keeps this file across restarts and rebuilds.
       - SQLITE_DB_PATH=/data/bot_messages.db
     volumes:
-      # Persist the SQLite message store across container restarts/rebuilds.
+      # Persist the SQLite message store across container restarts and rebuilds.
       - bot_data:/data
+      # Instagram session cookies (refreshed on the host, picked up live).
+      # Directory mount (not single-file) so atomic replaces are visible in-container.
+      - ./secrets:/data/secrets:ro
       # Optional: persist gallery-dl config/cookies
       # - ./gallery-dl:/app/gallery-dl
 

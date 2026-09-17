@@ -18,6 +18,8 @@ telegram-bot-download/
 │   ├── telegram_bot/    # Telegram bot layer (handlers, routing, app factory)
 │   ├── tests/           # Unit tests
 │   └── utils/           # Shared utilities (cache, filesystem, validation)
+├── scripts/             # Host helpers (Instagram Chrome cookie refresh)
+├── secrets/             # Gitignored Netscape cookies.txt mounted into Docker
 ├── main.py              # Application entrypoint
 ├── Dockerfile           # Container definition
 ├── pyproject.toml       # Project metadata & dependencies
@@ -197,9 +199,11 @@ Use pytest with async support:
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
+
 @pytest.fixture
 def settings():
     return AppSettings()
+
 
 @pytest.mark.asyncio
 async def test_handler(settings):
@@ -249,6 +253,8 @@ pre-commit install
 | `GEMINI_API_KEY` | Google Gemini API key for AI features | No | "" |
 | `DOWNLOAD_DIR` | Directory for temporary downloads | No | `./downloads` |
 | `LOG_LEVEL` | Logging level (DEBUG/INFO/WARNING/ERROR) | No | `INFO` |
+| `INSTAGRAM_COOKIE_FILE` | Netscape cookies.txt for Instagram (compose: `/data/secrets/instagram_cookies.txt`) | No | "" |
+| `INSTAGRAM_SESSIONID` | Fallback Instagram session cookie if cookies.txt is missing | No | "" |
 
 All settings are loaded via `AppSettings` dataclass in `app/config/settings.py`.
 
@@ -275,6 +281,7 @@ Create `app/features/new_feature.py`:
 from app.config.settings import AppSettings
 from app.config.strings import MESSAGES
 
+
 async def new_feature(update, context, settings: AppSettings) -> None:
     # ... implementation ...
     await update.message.reply_text(MESSAGES["new_feature_success"])
@@ -285,7 +292,10 @@ Add to `app/telegram_bot/handlers.py`:
 ```python
 from app.features.new_feature import new_feature
 
-async def handle_new_feature(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+
+async def handle_new_feature(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
     settings = context.application.settings["app_settings"]
     await new_feature(update, context, settings)
 ```
@@ -294,6 +304,7 @@ async def handle_new_feature(update: Update, context: ContextTypes.DEFAULT_TYPE)
 Add to `app/telegram_bot/router.py`:
 ```python
 from app.telegram_bot.handlers import handle_new_feature
+
 
 def setup_routes(app: Application) -> None:
     app.add_handler(MessageHandler(filters.Regex("trigger"), handle_new_feature))

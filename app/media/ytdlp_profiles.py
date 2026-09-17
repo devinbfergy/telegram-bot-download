@@ -134,16 +134,12 @@ def get_instagram_profile() -> Dict[str, Any]:
     """
     Optimized profile for Instagram reels and posts.
     - Prefers pre-merged formats to avoid ffmpeg merge failures
+    - Impersonates Chrome (curl-cffi) to reduce login walls
     - Falls back gracefully to best available quality
-    - Simplified post-processing for reliability
     """
     profile = _BASE_PROFILE.copy()
     profile.update(
         {
-            # Format selection priority for Instagram:
-            # 1. Try best pre-merged mp4 format (no merging needed)
-            # 2. Fall back to any best pre-merged format
-            # 3. Last resort: merge best video and audio if needed
             "format": (
                 "best[ext=mp4][height<=1080]/"
                 "best[ext=mp4]/"
@@ -151,6 +147,7 @@ def get_instagram_profile() -> Dict[str, Any]:
                 "bestvideo[height<=1080]+bestaudio/"
                 "best"
             ),
+            "impersonate": "chrome",
             "postprocessors": [
                 {
                     "key": "FFmpegVideoConvertor",
@@ -166,6 +163,57 @@ def get_instagram_profile() -> Dict[str, Any]:
                 "copy",
                 "-c:a",
                 "copy",
+                "-movflags",
+                "+faststart",
+            ],
+        }
+    )
+    return profile
+
+
+def get_tiktok_profile() -> Dict[str, Any]:
+    """
+    Optimized profile for TikTok videos, including short /t/ links.
+    - Impersonates Chrome (curl-cffi) because TikTok blocks generic clients
+    - Prefers a single MP4 to avoid merge failures
+    """
+    profile = _BASE_PROFILE.copy()
+    profile.update(
+        {
+            "format": (
+                "best[ext=mp4][height<=1080]/"
+                "best[ext=mp4]/"
+                "best[height<=1080]/"
+                "bestvideo[height<=1080]+bestaudio/"
+                "best"
+            ),
+            "impersonate": "chrome",
+            "http_headers": {
+                "Referer": "https://www.tiktok.com/",
+            },
+            "postprocessors": [
+                {
+                    "key": "FFmpegVideoConvertor",
+                    "preferedformat": "mp4",
+                },
+                {
+                    "key": "FFmpegMetadata",
+                    "add_metadata": True,
+                },
+            ],
+            "postprocessor_args": [
+                "-c:v",
+                "libx264",
+                "-preset",
+                "medium",
+                "-crf",
+                "28",
+                "-c:a",
+                "aac",
+                "-b:a",
+                "128k",
+                "-pix_fmt",
+                "yuv420p",
                 "-movflags",
                 "+faststart",
             ],
@@ -223,6 +271,7 @@ PROFILES = {
     "default": get_default_profile,
     "shorts": get_shorts_profile,
     "instagram": get_instagram_profile,
+    "tiktok": get_tiktok_profile,
     "fallback": get_fallback_profile,
     "telegram": get_telegram_optimization_profile,
 }
