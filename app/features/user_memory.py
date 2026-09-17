@@ -35,23 +35,27 @@ GEMINI_MODEL = "gemini-2.5-flash"
 
 MEMORY_SYNTHESIS_PROMPT = """\
 You are an intelligent memory system for a Telegram chat bot called Gork.
-Your job is to maintain a concise, vivid, and helpful profile/memory about the user '{name}' (username: {username}, user_id: {user_id}).
+Your job is to maintain a memory profile of ONE SPECIFIC PERSON: '{name}' (username: {username}, user_id: {user_id}) in this chat.
+
+CRITICAL RULES TO AVOID MIXING UP USERS:
+1. FOCUS EXCLUSIVELY ON {name}: Only extract facts, personal preferences, and personality traits that {name} explicitly reveals about *themselves*.
+2. DO NOT ATTRIBUTE GROUP CHATTER OR EVENTS TO THIS PERSON:
+   - If the group is discussing an upcoming event, trip, draft, game, or purchase, DO NOT list it as {name}'s personal passion or favorite thing unless {name} explicitly and personally states that they love it.
+   - Merely participating in group conversation or asking logistic questions (like packing, times, costs) is NOT a personal hobby.
+3. DO NOT CONFUSE OTHER PEOPLE WITH {name}: If {name} talks to or about someone else (e.g. mentions Amanda, Devin, Leighton, Joe, etc.), those are OTHER people's lives and actions, NEVER {name}'s.
+4. DO NOT GUESS OR BORROW DETAILS: If {name} only made brief chat comments and revealed no real personal hobbies, favorites, or unique traits, simply write "None explicitly mentioned yet" for those sections. Never fabricate or borrow interests from other chat members.
 
 {existing_memory_section}
 
-Here are the messages sent by this user in the chat over the last {hours:.0f} hours:
+Here are the messages sent ONLY by {name} in this chat over the last {hours:.0f} hours:
 {recent_messages}
 
-Instructions:
-1. Synthesize and update the memory profile for this person by combining their existing memory with what they talked about today.
-2. Structure the memory concisely (3 to 5 brief bullet points) covering:
-   - Profile & Personality: who they are, communication style, humor, and general vibe in the group.
-   - Favorite Things & Preferences: their hobbies, passions, likes/dislikes, favorite tech, music, food, or games.
-   - Recent Topics & Focus: what they've recently been talking about, working on, sharing, or discussing lately.
-3. Be specific and grounded in what they actually said. Do not invent details.
-4. Keep it concise (under 120 words total).
-5. If the new messages don't add any new useful knowledge, preserve the existing memory.
-6. Return ONLY the updated memory text. Do not wrap in conversational preamble, quotes, or markdown code blocks.
+Output format:
+- Personality & Vibe: (1-2 sentences on {name}'s communication style and humor, e.g. dry, sarcastic, practical, brief)
+- Personal Favorites & Hobbies: (Specific things {name} explicitly confirmed liking about themselves, or "None explicitly mentioned yet")
+- Recent Topics: (1 sentence on themes {name} personally talked about)
+
+Keep it under 75 words. Ground every detail strictly in {name}'s actual words. Return ONLY the text above.
 """
 
 
@@ -125,6 +129,7 @@ async def update_user_memory_from_messages(
     messages: list[StoredMessage],
     settings: AppSettings,
     hours: float = 24.0,
+    chat_id: int = 0,
 ) -> str | None:
     """
     Synthesize and persist memory for a single user given their messages from the last day.
@@ -133,15 +138,15 @@ async def update_user_memory_from_messages(
         return None
 
     db_path = str(settings.db_path)
-    existing_record = await get_user_memory(db_path, user_id)
+    existing_record = await get_user_memory(db_path, user_id, chat_id=chat_id)
 
     if existing_record and existing_record.memory.strip():
         existing_memory_section = (
-            f"Current existing memory for this user:\n{existing_record.memory.strip()}"
+            f"Current existing memory for this user in this chat:\n{existing_record.memory.strip()}"
         )
     else:
         existing_memory_section = (
-            "This is a new user with no previous memory recorded."
+            "This is a new user with no previous memory recorded in this chat."
         )
 
     display_name = first_name or username or f"User {user_id}"
@@ -162,9 +167,13 @@ async def update_user_memory_from_messages(
             username=username,
             first_name=first_name,
             memory=new_memory,
+            chat_id=chat_id,
         )
         logger.info(
-            "user_memory: updated memory for user_id=%s (%s)", user_id, display_name
+            "user_memory: updated memory for user_id=%s (%s) in chat=%s",
+            user_id,
+            display_name,
+            chat_id,
         )
         return new_memory
 
@@ -176,9 +185,9 @@ async def update_all_user_memories(
     hours: float | None = None,
 ) -> dict[str, int]:
     """
-    Take messages from the last day, group by user, and use Gemini to update memories.
+    Take messages from the last day, group by (chat_id, user_id), and use Gemini to update memories.
 
-    Returns a summary dictionary with counts of updated users.
+    Returns a summary dictionary with counts of updated user-chat profiles.
     """
     if hours is None:
         hours = settings.user_memory_window_hours
@@ -192,22 +201,23 @@ async def update_all_user_memories(
     db_path = str(settings.db_path)
     recent_messages = await get_messages_for_last_day(db_path, hours=hours)
 
-    user_messages: dict[int, list[StoredMessage]] = {}
-    user_info: dict[int, tuple[str | None, str | None]] = {}
+    user_messages: dict[tuple[int, int], list[StoredMessage]] = {}
+    user_info: dict[tuple[int, int], tuple[str | None, str | None]] = {}
 
     for msg in recent_messages:
         if msg.user_id is None:
             continue
-        user_messages.setdefault(msg.user_id, []).append(msg)
-        curr_u, curr_f = user_info.get(msg.user_id, (None, None))
-        user_info[msg.user_id] = (
+        key = (msg.chat_id or 0, msg.user_id)
+        user_messages.setdefault(key, []).append(msg)
+        curr_u, curr_f = user_info.get(key, (None, None))
+        user_info[key] = (
             msg.username or curr_u,
             msg.first_name or curr_f,
         )
 
     updated_count = 0
-    for uid, msgs in user_messages.items():
-        uname, fname = user_info.get(uid, (None, None))
+    for (cid, uid), msgs in user_messages.items():
+        uname, fname = user_info.get((cid, uid), (None, None))
         result = await update_user_memory_from_messages(
             user_id=uid,
             username=uname,
@@ -215,12 +225,13 @@ async def update_all_user_memories(
             messages=msgs,
             settings=settings,
             hours=hours,
+            chat_id=cid,
         )
         if result:
             updated_count += 1
 
     logger.info(
-        "user_memory: batch update completed (%d/%d users updated)",
+        "user_memory: batch update completed (%d/%d profiles updated)",
         updated_count,
         len(user_messages),
     )
@@ -245,6 +256,7 @@ async def user_memory_cron_job(context: ContextTypes.DEFAULT_TYPE) -> None:
 async def get_memories_prompt_block(
     db_path: str,
     user_ids: list[int] | set[int],
+    chat_id: int | None = None,
 ) -> str:
     """
     Retrieve stored memories for given user IDs and format into a prompt context section.
@@ -258,7 +270,7 @@ async def get_memories_prompt_block(
         if not clean_ids:
             return ""
 
-        memories = await get_user_memories(db_path, clean_ids)
+        memories = await get_user_memories(db_path, clean_ids, chat_id=chat_id)
         if not memories:
             return ""
 
@@ -303,7 +315,11 @@ async def show_user_memory(
         f"@{target_user.username}" if target_user.username else "you"
     )
     db_path = str(settings.db_path)
-    mem = await get_user_memory(db_path, target_user.id)
+    chat_id = update.effective_chat.id if update.effective_chat else 0
+    mem = await get_user_memory(db_path, target_user.id, chat_id=chat_id)
+    if not mem or not mem.memory or not mem.memory.strip():
+        # Fall back to any memory for this user across chats if not found in current chat
+        mem = await get_user_memory(db_path, target_user.id)
 
     if not mem or not mem.memory or not mem.memory.strip():
         await update.message.reply_text(

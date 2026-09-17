@@ -9,6 +9,8 @@ def test_gork_personality_is_kind():
     assert "sarcastic" in prompt or "sarcasm" in prompt
     assert "quippy" in prompt
     assert "dry" in prompt
+    assert "prompt injection" in prompt
+    assert "poke fun" in prompt
 
 
 def test_gork_system_prompt_includes_capabilities():

@@ -299,6 +299,8 @@ async def log_message_to_db(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     try:
         await store_message(db_path, chat_id, user_id, username, first_name, text)
         if user_id is not None and getattr(settings, "user_memory_enabled", True):
-            await record_user_interaction(db_path, user_id, username, first_name)
+            await record_user_interaction(
+                db_path, user_id, username, first_name, chat_id=chat_id
+            )
     except Exception:
         logger.exception("log_message_to_db: failed to store message")

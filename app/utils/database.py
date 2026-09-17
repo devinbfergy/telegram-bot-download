@@ -37,6 +37,7 @@ class UserMemory(NamedTuple):
     first_name: str | None
     memory: str
     updated_at: float
+    chat_id: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -63,15 +64,42 @@ def init_db_sync(db_path: str) -> None:
             CREATE INDEX IF NOT EXISTS idx_chat_timestamp
             ON messages (chat_id, timestamp)
         """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS user_memories (
-                user_id      INTEGER PRIMARY KEY,
-                username     TEXT,
-                first_name   TEXT,
-                memory       TEXT NOT NULL DEFAULT '',
-                updated_at   REAL NOT NULL
-            )
-        """)
+
+        # Check existing user_memories schema for migration
+        cols = [
+            r[1] for r in conn.execute("PRAGMA table_info(user_memories)").fetchall()
+        ]
+        if cols and "chat_id" not in cols:
+            conn.execute("ALTER TABLE user_memories RENAME TO old_user_memories")
+            conn.execute("""
+                CREATE TABLE user_memories (
+                    chat_id      INTEGER NOT NULL DEFAULT 0,
+                    user_id      INTEGER NOT NULL,
+                    username     TEXT,
+                    first_name   TEXT,
+                    memory       TEXT NOT NULL DEFAULT '',
+                    updated_at   REAL NOT NULL,
+                    PRIMARY KEY (chat_id, user_id)
+                )
+            """)
+            conn.execute("""
+                INSERT INTO user_memories (chat_id, user_id, username, first_name, memory, updated_at)
+                SELECT 0, user_id, username, first_name, memory, updated_at FROM old_user_memories
+            """)
+            conn.execute("DROP TABLE old_user_memories")
+        else:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS user_memories (
+                    chat_id      INTEGER NOT NULL DEFAULT 0,
+                    user_id      INTEGER NOT NULL,
+                    username     TEXT,
+                    first_name   TEXT,
+                    memory       TEXT NOT NULL DEFAULT '',
+                    updated_at   REAL NOT NULL,
+                    PRIMARY KEY (chat_id, user_id)
+                )
+            """)
+
         conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_user_memories_updated
             ON user_memories (updated_at)
@@ -117,19 +145,20 @@ def _record_user_interaction_sync(
     user_id: int,
     username: str | None,
     first_name: str | None,
+    chat_id: int = 0,
 ) -> None:
     now = time.time()
     conn = sqlite3.connect(db_path)
     try:
         conn.execute(
             """
-            INSERT INTO user_memories (user_id, username, first_name, memory, updated_at)
-            VALUES (?, ?, ?, '', ?)
-            ON CONFLICT(user_id) DO UPDATE SET
+            INSERT INTO user_memories (chat_id, user_id, username, first_name, memory, updated_at)
+            VALUES (?, ?, ?, ?, '', ?)
+            ON CONFLICT(chat_id, user_id) DO UPDATE SET
                 username = COALESCE(excluded.username, user_memories.username),
                 first_name = COALESCE(excluded.first_name, user_memories.first_name)
             """,
-            (user_id, username, first_name, now),
+            (chat_id, user_id, username, first_name, now),
         )
         conn.commit()
     finally:
@@ -142,42 +171,56 @@ def _set_user_memory_sync(
     username: str | None,
     first_name: str | None,
     memory: str,
+    chat_id: int = 0,
 ) -> None:
     now = time.time()
     conn = sqlite3.connect(db_path)
     try:
         conn.execute(
             """
-            INSERT INTO user_memories (user_id, username, first_name, memory, updated_at)
-            VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(user_id) DO UPDATE SET
+            INSERT INTO user_memories (chat_id, user_id, username, first_name, memory, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(chat_id, user_id) DO UPDATE SET
                 username = COALESCE(excluded.username, user_memories.username),
                 first_name = COALESCE(excluded.first_name, user_memories.first_name),
                 memory = excluded.memory,
                 updated_at = excluded.updated_at
             """,
-            (user_id, username, first_name, memory, now),
+            (chat_id, user_id, username, first_name, memory, now),
         )
         conn.commit()
     finally:
         conn.close()
 
 
-def _get_user_memory_sync(db_path: str, user_id: int) -> UserMemory | None:
+def _get_user_memory_sync(
+    db_path: str, user_id: int, chat_id: int | None = None
+) -> UserMemory | None:
     try:
         conn = sqlite3.connect(db_path)
     except sqlite3.Error as exc:
         logger.warning("database: could not connect to %s: %s", db_path, exc)
         return None
     try:
-        row = conn.execute(
-            """
-            SELECT user_id, username, first_name, memory, updated_at
-            FROM user_memories
-            WHERE user_id = ?
-            """,
-            (user_id,),
-        ).fetchone()
+        if chat_id is not None:
+            row = conn.execute(
+                """
+                SELECT user_id, username, first_name, memory, updated_at, chat_id
+                FROM user_memories
+                WHERE user_id = ? AND chat_id = ?
+                """,
+                (user_id, chat_id),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                """
+                SELECT user_id, username, first_name, memory, updated_at, chat_id
+                FROM user_memories
+                WHERE user_id = ?
+                ORDER BY updated_at DESC LIMIT 1
+                """,
+                (user_id,),
+            ).fetchone()
         return UserMemory(*row) if row else None
     except sqlite3.Error as exc:
         logger.warning("database: query failed in _get_user_memory_sync: %s", exc)
@@ -187,7 +230,7 @@ def _get_user_memory_sync(db_path: str, user_id: int) -> UserMemory | None:
 
 
 def _get_user_memories_sync(
-    db_path: str, user_ids: list[int]
+    db_path: str, user_ids: list[int], chat_id: int | None = None
 ) -> dict[int, UserMemory]:
     if not user_ids:
         return {}
@@ -198,15 +241,51 @@ def _get_user_memories_sync(
         return {}
     try:
         placeholders = ",".join("?" for _ in user_ids)
-        rows = conn.execute(
-            f"""
-            SELECT user_id, username, first_name, memory, updated_at
-            FROM user_memories
-            WHERE user_id IN ({placeholders})
-            """,
-            user_ids,
-        ).fetchall()
-        return {row[0]: UserMemory(*row) for row in rows}
+        result: dict[int, UserMemory] = {}
+        if chat_id is not None:
+            # First fetch chat-specific memories
+            params = list(user_ids) + [chat_id]
+            rows = conn.execute(
+                f"""
+                SELECT user_id, username, first_name, memory, updated_at, chat_id
+                FROM user_memories
+                WHERE user_id IN ({placeholders}) AND chat_id = ?
+                """,
+                params,
+            ).fetchall()
+            for row in rows:
+                result[row[0]] = UserMemory(*row)
+
+            # For any users missing a chat-specific memory, fall back to their most recent memory
+            missing_ids = [uid for uid in user_ids if uid not in result]
+            if missing_ids:
+                m_placeholders = ",".join("?" for _ in missing_ids)
+                fallback_rows = conn.execute(
+                    f"""
+                    SELECT user_id, username, first_name, memory, updated_at, chat_id
+                    FROM user_memories
+                    WHERE user_id IN ({m_placeholders})
+                    ORDER BY updated_at DESC
+                    """,
+                    missing_ids,
+                ).fetchall()
+                for row in fallback_rows:
+                    if row[0] not in result:
+                        result[row[0]] = UserMemory(*row)
+        else:
+            rows = conn.execute(
+                f"""
+                SELECT user_id, username, first_name, memory, updated_at, chat_id
+                FROM user_memories
+                WHERE user_id IN ({placeholders})
+                ORDER BY updated_at DESC
+                """,
+                user_ids,
+            ).fetchall()
+            for row in rows:
+                if row[0] not in result:
+                    result[row[0]] = UserMemory(*row)
+        return result
     except sqlite3.Error as exc:
         logger.warning("database: query failed in _get_user_memories_sync: %s", exc)
         return {}
@@ -320,6 +399,7 @@ async def record_user_interaction(
     user_id: int,
     username: str | None,
     first_name: str | None,
+    chat_id: int = 0,
 ) -> None:
     """Record that a user spoke to us, registering them in user_memories if not present."""
     await asyncio.to_thread(
@@ -328,6 +408,7 @@ async def record_user_interaction(
         user_id,
         username,
         first_name,
+        chat_id,
     )
 
 
@@ -337,8 +418,9 @@ async def set_user_memory(
     username: str | None,
     first_name: str | None,
     memory: str,
+    chat_id: int = 0,
 ) -> None:
-    """Save or update memory for a user."""
+    """Save or update memory for a user in a specific chat."""
     await asyncio.to_thread(
         _set_user_memory_sync,
         db_path,
@@ -346,23 +428,26 @@ async def set_user_memory(
         username,
         first_name,
         memory,
+        chat_id,
     )
 
 
 async def get_user_memory(
     db_path: str,
     user_id: int,
+    chat_id: int | None = None,
 ) -> UserMemory | None:
-    """Retrieve memory record for a specific user ID."""
-    return await asyncio.to_thread(_get_user_memory_sync, db_path, user_id)
+    """Retrieve memory record for a specific user ID (optionally scoped to a chat)."""
+    return await asyncio.to_thread(_get_user_memory_sync, db_path, user_id, chat_id)
 
 
 async def get_user_memories(
     db_path: str,
     user_ids: list[int],
+    chat_id: int | None = None,
 ) -> dict[int, UserMemory]:
-    """Retrieve memory records for a list of user IDs."""
-    return await asyncio.to_thread(_get_user_memories_sync, db_path, user_ids)
+    """Retrieve memory records for a list of user IDs (optionally scoped to a chat)."""
+    return await asyncio.to_thread(_get_user_memories_sync, db_path, user_ids, chat_id)
 
 
 async def get_all_user_memories(
