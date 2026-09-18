@@ -1,5 +1,20 @@
 from typing import Any, Dict
 
+try:
+    from yt_dlp.networking.impersonate import ImpersonateTarget
+
+    class _ImpersonateChrome(ImpersonateTarget):
+        """ImpersonateTarget for Chrome that also compares equal to the string 'chrome'."""
+
+        def __eq__(self, other: object) -> bool:
+            if isinstance(other, str):
+                return str(self) == other
+            return super().__eq__(other)
+
+    CHROME_TARGET: Any = _ImpersonateChrome.from_str("chrome")
+except ImportError:
+    CHROME_TARGET = "chrome"
+
 # Base configuration common to all yt-dlp profiles
 _BASE_PROFILE = {
     "quiet": True,
@@ -147,7 +162,7 @@ def get_instagram_profile() -> Dict[str, Any]:
                 "bestvideo[height<=1080]+bestaudio/"
                 "best"
             ),
-            "impersonate": "chrome",
+            "impersonate": CHROME_TARGET,
             "postprocessors": [
                 {
                     "key": "FFmpegVideoConvertor",
@@ -187,7 +202,7 @@ def get_tiktok_profile() -> Dict[str, Any]:
                 "bestvideo[height<=1080]+bestaudio/"
                 "best"
             ),
-            "impersonate": "chrome",
+            "impersonate": CHROME_TARGET,
             "http_headers": {
                 "Referer": "https://www.tiktok.com/",
             },

@@ -10,7 +10,6 @@ from app.config.settings import TELEGRAM_FILE_LIMIT_MB, AppSettings
 from app.config.strings import MESSAGES
 from app.core.exceptions import ExtractionFailed, SizeLimitExceeded
 from app.media.detectors import (
-    is_instagram_reel_url,
     is_instagram_url,
     is_slideshow,
     is_tiktok_url,
@@ -54,7 +53,7 @@ class Downloader:
             # Auto-detect profile if not provided
             if profile_name is None:
                 is_shorts = is_youtube_shorts_url(url)
-                is_instagram = is_instagram_reel_url(url)
+                is_instagram = is_instagram_url(url)
 
                 if is_shorts:
                     profile_name = "shorts"
@@ -254,5 +253,25 @@ class Downloader:
 
     def _run_ytdlp_download(self, url: str, ydl_opts: dict) -> dict | None:
         """Wrapper to run yt-dlp download in a sync context."""
-        with YoutubeDL(ydl_opts) as ydl:  # type: ignore[arg-type]
-            return ydl.extract_info(url, download=True)  # type: ignore[return-value]
+        opts = dict(ydl_opts)
+        if "impersonate" in opts and isinstance(opts["impersonate"], str):
+            try:
+                from yt_dlp.networking.impersonate import ImpersonateTarget
+
+                opts["impersonate"] = ImpersonateTarget.from_str(opts["impersonate"])
+            except Exception as e:
+                logger.warning(
+                    f"Could not convert impersonate string {opts['impersonate']!r} to ImpersonateTarget: {e}"
+                )
+                opts.pop("impersonate", None)
+
+        try:
+            with YoutubeDL(opts) as ydl:  # type: ignore[arg-type]
+                return ydl.extract_info(url, download=True)  # type: ignore[return-value]
+        except YtDlpDownloadError:
+            raise
+        except Exception as e:
+            logger.warning(
+                f"yt-dlp encountered an error during download for {url}: {e}"
+            )
+            raise ExtractionFailed(f"yt-dlp failed: {e}") from e

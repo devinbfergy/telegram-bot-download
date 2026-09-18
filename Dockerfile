@@ -3,8 +3,9 @@
 FROM python:3.12-slim-bookworm
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# Set environment variables for non-interactive installations
-ENV DEBIAN_FRONTEND=noninteractive
+# Set environment variables for non-interactive installations and PATH
+ENV DEBIAN_FRONTEND=noninteractive \
+    PATH="/app/.venv/bin:$PATH"
 
 # Install FFmpeg and its dependencies
 # apt-get update: Updates the package list
