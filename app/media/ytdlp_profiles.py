@@ -123,7 +123,7 @@ def get_shorts_profile() -> Dict[str, Any]:
 def get_fallback_profile() -> Dict[str, Any]:
     """
     A simple fallback profile for when the default fails, especially with frozen frames.
-    - Aims for the best single MP4 file without complex merging.
+    - Re-encodes with libx264 and yuv420p to repair corrupt or incompatible codecs.
     """
     profile = _BASE_PROFILE.copy()
     profile.update(
@@ -140,6 +140,22 @@ def get_fallback_profile() -> Dict[str, Any]:
                     "add_metadata": True,
                 },
             ],
+            "postprocessor_args": [
+                "-c:v",
+                "libx264",
+                "-preset",
+                "medium",
+                "-crf",
+                "28",
+                "-c:a",
+                "aac",
+                "-b:a",
+                "128k",
+                "-pix_fmt",
+                "yuv420p",
+                "-movflags",
+                "+faststart",
+            ],
         }
     )
     return profile
@@ -150,7 +166,7 @@ def get_instagram_profile() -> Dict[str, Any]:
     Optimized profile for Instagram reels and posts.
     - Prefers pre-merged formats to avoid ffmpeg merge failures
     - Impersonates Chrome (curl-cffi) to reduce login walls
-    - Falls back gracefully to best available quality
+    - Re-encodes to libx264 yuv420p for smooth Telegram playback without freezing
     """
     profile = _BASE_PROFILE.copy()
     profile.update(
@@ -175,9 +191,17 @@ def get_instagram_profile() -> Dict[str, Any]:
             ],
             "postprocessor_args": [
                 "-c:v",
-                "copy",
+                "libx264",
+                "-preset",
+                "medium",
+                "-crf",
+                "28",
                 "-c:a",
-                "copy",
+                "aac",
+                "-b:a",
+                "128k",
+                "-pix_fmt",
+                "yuv420p",
                 "-movflags",
                 "+faststart",
             ],

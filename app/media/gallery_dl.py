@@ -14,7 +14,7 @@ from app.media.slideshow import create_slideshow_from_media
 from app.telegram_bot.status_messenger import StatusMessenger
 from app.utils.concurrency import run_blocking
 from app.utils.filesystem import create_temp_dir
-from app.utils.validation import truncate_caption
+from app.utils.validation import summarize_description, truncate_caption
 
 logger = logging.getLogger(__name__)
 
@@ -248,7 +248,8 @@ def _extract_caption_from_gallery_dl(temp_dir: Path) -> str:
                     or ""
                 )
                 if description:
-                    return truncate_caption(description)
+                    summarized = summarize_description(description)
+                    return truncate_caption(summarized)
         except (json.JSONDecodeError, OSError) as e:
             logger.debug(f"Failed to parse gallery-dl JSON {json_file}: {e}")
             continue

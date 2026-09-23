@@ -32,17 +32,24 @@ async def reprocess_bad_bot(
 
     replied_message = update.message.reply_to_message
 
-    # Extract text from the replied message
+    # Extract text from the replied message, or the original message if replying to bot's video
     text = replied_message.text or replied_message.caption
-    if not text:
-        logger.warning("reprocess_bad_bot: No text in replied message")
-        await update.message.reply_text(MESSAGES["reprocessing_no_url"])
-        return
+    url = extract_url(text) if text else None
+    target_message = replied_message
 
-    # Extract URL from the text
-    url = extract_url(text)
+    if not url and replied_message.reply_to_message:
+        parent_text = (
+            replied_message.reply_to_message.text
+            or replied_message.reply_to_message.caption
+        )
+        if parent_text:
+            url = extract_url(parent_text)
+            target_message = replied_message.reply_to_message
+
     if not url:
-        logger.warning(f"reprocess_bad_bot: No URL found in text: {text}")
+        logger.warning(
+            "reprocess_bad_bot: No URL found in replied message or parent message"
+        )
         await update.message.reply_text(MESSAGES["reprocessing_no_url"])
         return
 
@@ -66,7 +73,7 @@ async def reprocess_bad_bot(
 
     try:
         await downloader.download_and_send_media(
-            url, replied_message, profile_name="telegram"
+            url, target_message, profile_name="telegram"
         )
     except Exception as e:
         logger.error(f"reprocess_bad_bot: Error reprocessing {url}: {e}", exc_info=True)

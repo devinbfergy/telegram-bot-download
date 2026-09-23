@@ -183,8 +183,16 @@ class Downloader:
                         )
 
                 if detect_frozen_frames(video_path):
-                    await self.status_messenger.edit_message(
-                        MESSAGES["frozen_frame_failed"]
+                    logger.warning(
+                        f"yt-dlp fallback produced a frozen video for {url}. Trying gallery-dl as fallback."
+                    )
+                    safe_cleanup(video_path)
+                    await download_and_send_with_gallery_dl(
+                        url,
+                        message,
+                        self.status_messenger,
+                        self.settings,
+                        purpose="fallback",
                     )
                     return
 
@@ -198,8 +206,8 @@ class Downloader:
             # --- Uploading ---
             await self.status_messenger.edit_message(MESSAGES["uploading"])
 
-            # Extract caption from video description
-            description = info_dict.get("description")
+            # Extract caption from video description or title
+            description = info_dict.get("description") or info_dict.get("title")
             summarized = summarize_description(description)
             caption = truncate_caption(summarized)
 
