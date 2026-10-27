@@ -13,7 +13,7 @@ telegram-bot-download/
 ├── app/
 │   ├── config/          # Configuration & constants
 │   ├── core/            # Core utilities (exceptions, logging, types)
-│   ├── features/        # Feature modules (AI truth check, reprocessing)
+│   ├── features/        # Feature modules (Gork AI, user memory, GitHub issues, reprocessing)
 │   ├── media/           # Media handling (download, detect, process, send)
 │   ├── telegram_bot/    # Telegram bot layer (handlers, routing, app factory)
 │   ├── tests/           # Unit tests
@@ -21,7 +21,10 @@ telegram-bot-download/
 ├── scripts/             # Host helpers (Instagram Chrome cookie refresh)
 ├── secrets/             # Gitignored Netscape cookies.txt mounted into Docker
 ├── main.py              # Application entrypoint
+├── goal-and-requirements.md  # Spec graph root (what & why)
+├── architecture.md      # Spec: modules, invariants, decisions
 ├── Dockerfile           # Container definition
+├── docker-compose.yml   # Production deployment (single service + volumes)
 ├── pyproject.toml       # Project metadata & dependencies
 └── requirements.txt     # Legacy requirements (use pyproject.toml)
 ```
@@ -38,18 +41,20 @@ telegram-bot-download/
 - `logging.py`: Structured logging setup
 - `types.py`: Shared type definitions
 
-**features/** - Optional Features
-- `ai_truth_check.py`: Gemini API integration for fact-checking
-- `reprocess_bad_bot.py`: Reprocess failed downloads (stub)
+**features/** - User-triggered Features (see `app/features/SPEC.md`)
+- `mention_responder.py`: Gork replies to `@gork` / bot-handle mentions
+- `ai_truth_check.py`: `@gork is this real` fact-check
+- `user_memory.py`: Per-chat user memory profiles (cron job + `@gork memory`)
+- `github_issue.py`: `@gork open issue` → GitHub issue
+- `good_bot_catgirl.py`: `good bot` persona reply
+- `reprocess_bad_bot.py`: `bad bot` reply re-downloads with the `telegram` profile
 
-**media/** - Media Processing Pipeline
+**media/** - Media Download Pipeline (see `app/media/SPEC.md`)
 - `detectors.py`: URL type detection (video/image/slideshow)
-- `downloader.py`: Main yt-dlp download logic
-- `gallery_dl.py`: Fallback downloader for images/galleries
+- `downloader.py`: Main yt-dlp download → inspect → send logic
+- `ytdlp_profiles.py`: Per-platform yt-dlp option profiles
+- `gallery_dl.py`: Fallback downloader for images/galleries + Instagram cookies
 - `inspection.py`: Frozen frame detection
-- `pipeline.py`: Media processing orchestration (stub)
-- `postprocess.py`: Video optimization for Telegram
-- `send.py`: Telegram upload utilities
 - `slideshow.py`: Convert image collections to video
 
 **telegram_bot/** - Bot Interface Layer
@@ -58,11 +63,19 @@ telegram-bot-download/
 - `router.py`: Registers handlers to Application
 - `status_messenger.py`: User status updates
 
-**utils/** - Shared Utilities
-- `cache.py`: Caching utilities
-- `concurrency.py`: Async helpers
+**utils/** - Shared Utilities (see `app/utils/SPEC.md`)
+- `concurrency.py`: `run_blocking` async helper
+- `database.py`: SQLite message store + user memories
 - `filesystem.py`: Temp directory management
-- `validation.py`: URL extraction/validation
+- `validation.py`: URL extraction/validation, caption helpers, chat allowlist
+
+**scripts/instagram_session/** - Host-side Instagram cookie refresh (see its `SPEC.md`)
+
+## Specs
+
+Design intent lives in the spec graph: `goal-and-requirements.md` → `architecture.md` → a `SPEC.md`
+beside each module. Specs are the ground truth for boundaries, invariants and decisions — read the
+relevant one before changing behavior, and update it in the same change when you alter a contract.
 
 ## Key Design Patterns
 
@@ -75,7 +88,7 @@ await downloader.download_and_send_media(url, message)
 
 ### Separation of Concerns
 - Handlers don't know about download implementation
-- Downloaders don't know about Telegram API
+- The media pipeline owns the whole download → send path and may use `StatusMessenger` and the Telegram `Message` directly (deliberate; see `architecture.md`)
 - Configuration isolated from business logic
 
 ### Error Handling
@@ -111,32 +124,19 @@ await status_messenger.edit_message(MESSAGES["uploading"])
    uv run main.py
    ```
 
-### Production (Docker)
+### Production (Docker Compose)
 
-1. **Build the image**:
-   ```bash
-   docker build -t telegram-video-bot:1.0 .
-   ```
+Secrets go in a gitignored `.env` in the project root (see `README.md`); `docker-compose.yml` reads them.
 
-2. **Run the container**:
-   ```bash
-   docker run --restart always \
-     -e API_TOKEN=your_telegram_bot_token \
-     -e GEMINI_API_KEY=optional_key \
-     --name tbot \
-     telegram-video-bot:1.0
-   ```
+```bash
+docker compose up --build -d   # build + (re)start; data volume is preserved
+docker compose logs -f         # view logs
+docker compose down            # stop
+docker compose down -v         # stop and wipe the SQLite volume
+```
 
-3. **View logs**:
-   ```bash
-   docker logs -f tbot
-   ```
-
-4. **Stop the bot**:
-   ```bash
-   docker stop tbot
-   docker rm tbot
-   ```
+Compose mounts the named volume `bot_data` at `/data` (SQLite store) and `./secrets` read-only at
+`/data/secrets` (Instagram cookies, refreshed on the host by `scripts/instagram_session/`).
 
 ### Docker Configuration
 
@@ -161,21 +161,12 @@ uv run pytest -v
 uv run pytest app/tests/test_handlers.py -v
 ```
 
-### Run Tests with Coverage
-
-```bash
-uv run pytest --cov=app --cov-report=html
-```
-
 ### Test Structure
 
-Tests are located in `app/tests/`:
-- `test_ai_truth_check.py`: AI feature tests
-- `test_detectors.py`: URL detection tests
-- `test_downloader.py`: Download pipeline tests
-- `test_handlers.py`: Telegram handler tests
-- `test_facebook.py`: Facebook-specific tests
-- `test_frozen_detection.py`: Video inspection tests
+Tests live in `app/tests/`, one `test_<module>.py` per module under test (detectors, downloader,
+yt-dlp profiles, handlers, router, validation, filesystem, frozen detection, Instagram cookies, AI
+truth check, mention responder, user memory, GitHub issue, Docker). `test_docker.py` needs a running
+Docker daemon and is skipped otherwise.
 
 ### Test Configuration
 
@@ -188,9 +179,8 @@ testpaths = ["app/tests"]
 
 ### Current Test Status
 
-- 6/13 tests passing
-- 7 failures due to incomplete test mocks (not application bugs)
-- All application code compiles successfully
+- 157 passing, 5 skipped (Docker tests without a daemon)
+- CI (`.github/workflows/test.yml`) runs `ruff check`, `ruff format --check` and `pytest` on pushes/PRs to `main`
 
 ### Writing Tests
 
@@ -226,11 +216,11 @@ uv run ruff format .
 
 ### Type Checking
 
-```bash
-uv run mypy app/
-```
+`mypy.ini` exists, but mypy is not a project dependency; run it ad hoc:
 
-Configuration in `mypy.ini`.
+```bash
+uvx mypy app/
+```
 
 ### Pre-commit Hooks
 
@@ -251,8 +241,15 @@ pre-commit install
 |----------|-------------|----------|---------|
 | `API_TOKEN` | Telegram Bot API token from @BotFather | Yes | - |
 | `GEMINI_API_KEY` | Google Gemini API key for AI features | No | "" |
-| `DOWNLOAD_DIR` | Directory for temporary downloads | No | `./downloads` |
+| `APP_BASE_DIR` | Base dir; temp downloads go in `<base>/downloads` | No | cwd |
 | `LOG_LEVEL` | Logging level (DEBUG/INFO/WARNING/ERROR) | No | `INFO` |
+| `LOG_JSON` | `1` for structured JSON logs | No | `0` |
+| `GITHUB_TOKEN` / `GITHUB_REPO` | Token and `owner/repo` for `@gork open issue` | No | "" |
+| `ALLOWED_CHAT_IDS` | Comma-separated chat IDs served (empty = all) | No | the two group chats |
+| `ADMIN_USERNAMES` / `ADMIN_USER_IDS` | Admins whose DMs are allowed | No | `megadevx` / `625304326` |
+| `SQLITE_DB_PATH` | SQLite message store | No | `/data/bot_messages.db` |
+| `USER_MEMORY_ENABLED` | `0` disables the memory job | No | `1` |
+| `USER_MEMORY_INTERVAL_HOURS` / `USER_MEMORY_WINDOW_HOURS` | Memory job interval / message window | No | `24` / `24` |
 | `INSTAGRAM_COOKIE_FILE` | Netscape cookies.txt for Instagram (compose: `/data/secrets/instagram_cookies.txt`) | No | "" |
 | `INSTAGRAM_SESSIONID` | Fallback Instagram session cookie if cookies.txt is missing | No | "" |
 
@@ -306,8 +303,12 @@ Add to `app/telegram_bot/router.py`:
 from app.telegram_bot.handlers import handle_new_feature
 
 
-def setup_routes(app: Application) -> None:
-    app.add_handler(MessageHandler(filters.Regex("trigger"), handle_new_feature))
+def register(application: Application) -> Application:
+    # Group 0 is first-match-wins: add new triggers ABOVE the catch-all
+    # URL handler (handlers.handle_message), or it will also fire.
+    application.add_handler(
+        MessageHandler(filters.TEXT & filters.Regex("trigger"), handle_new_feature)
+    )
 ```
 
 ### 5. Write Tests
@@ -343,7 +344,7 @@ uv run main.py
 See `README.md` for contribution guidelines. Key points:
 - Use ruff for formatting
 - Write tests for new features
-- Update AGENTS.md if adding new modules
+- Update AGENTS.md if adding new modules, and add/update the module's `SPEC.md`
 - Keep configuration centralized in `config/`
 - Don't hardcode strings or magic numbers
 

@@ -59,7 +59,7 @@ flowchart LR
 
 - **Media owns the whole download → send path.** `media` replies to the Telegram `Message` and drives
   the user-visible status through `StatusMessenger` from `telegram_bot`. This deliberately overrides
-  the older guidance in `AGENTS.md` that downloaders should not know the Telegram API. The resulting
+  the older guidance that downloaders should not know the Telegram API. The resulting
   `media → telegram_bot` import is accepted.
 - **Gemini is called over raw REST, and the endpoint is mid-migration.** The target is
   `/v1beta/interactions` with `gemini-2.5-flash`, which mention, truth-check, and user-memory already
@@ -73,6 +73,3 @@ flowchart LR
 - People and handles are hardcoded in code and compose defaults: the `McClintock96` "alpha",
   `@guys_being_dudes_bot`, the default allowlisted chat IDs, and the admin username and ID.
 - Each feature builds its own Gemini request, parsing, and error handling. There is no shared client.
-- `README.md` and `AGENTS.md` have drifted from the code. Message retention is 7 days, not 24 h. Not
-  every call uses the flash-lite endpoint. Some listed files (`pipeline.py`, `postprocess.py`,
-  `send.py`, `cache.py`) do not exist.

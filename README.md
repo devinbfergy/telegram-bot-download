@@ -11,6 +11,8 @@ A Telegram group bot that downloads media from YouTube, Instagram, Facebook, and
 - **Gork AI assistant** — mention `@gork` (or the bot's username) in any message for a Gemini-powered reply with full web search grounding and recent chat history as context.
 - **Fact-check** — reply to any message with `@gork is this real` for a sourced verdict.
 - **GitHub issue creation** — `@gork open issue <title>` summarises the chat and files a GitHub issue.
+- **User memory** — a daily job condenses each person's messages into a per-chat profile that Gork uses for personal replies; `@gork memory` shows them.
+- **Chat allowlist** — only allowlisted chats and admin DMs are served; everything else is ignored.
 - All Gemini responses are grounded with Google Search, so answers reflect current events.
 
 ## Prerequisites
@@ -54,6 +56,11 @@ LOG_JSON=0                            # 1 = structured JSON logs
 | `INSTAGRAM_COOKIE_FILE` | Path to Netscape cookies.txt (set automatically in compose) | No |
 | `LOG_LEVEL`         | Logging verbosity (default: `INFO`)                      | No       |
 | `LOG_JSON`          | Set to `1` for structured JSON logs (default: `0`)       | No       |
+| `ALLOWED_CHAT_IDS`  | Comma-separated chat IDs the bot serves (empty = all)    | No       |
+| `ADMIN_USERNAMES` / `ADMIN_USER_IDS` | Admins whose DMs are allowed            | No       |
+| `SQLITE_DB_PATH`    | SQLite file (default: `/data/bot_messages.db`)           | No       |
+| `USER_MEMORY_ENABLED` | `0` disables the memory job (default: `1`)             | No       |
+| `USER_MEMORY_INTERVAL_HOURS` / `USER_MEMORY_WINDOW_HOURS` | Memory job interval / message window (default: 24) | No |
 
 ### Instagram session cookies
 
@@ -123,7 +130,7 @@ docker compose down -v
 
 ## Data Persistence
 
-The bot stores the last 24 hours of chat messages in a SQLite database to give Gork conversation context. The database lives in a named Docker volume (`bot_data`) mounted at `/data/bot_messages.db` inside the container.
+The bot stores chat messages in a SQLite database (pruned after 7 days) to give Gork conversation context and to build per-user memory profiles. The database lives in a named Docker volume (`bot_data`) mounted at `/data/bot_messages.db` inside the container.
 
 - The volume **survives** `docker compose up --build -d` (normal deploys).
 - The volume is **deleted** only by `docker compose down -v` (explicit wipe).
@@ -171,15 +178,17 @@ app/
 ├── features/        # AI truth-check, Gork mention responder, GitHub issues, catgirl
 ├── media/           # Download → inspect → post-process → send pipeline
 ├── telegram_bot/    # Handlers, router, app factory, status messenger
-├── utils/           # Cache, concurrency helpers, filesystem, SQLite database, validation
+├── utils/           # Concurrency helpers, filesystem, SQLite database, validation
 └── tests/           # pytest test suite
 ```
 
-All Gemini calls go through raw `aiohttp` REST requests to:
-```
-https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent
-```
-Every call includes `"tools": [{"googleSearch": {}}]` so responses are grounded with live web results.
+All Gemini calls go through raw `aiohttp` REST requests. The target endpoint is
+`/v1beta/interactions` with `gemini-2.5-flash` (mentions, fact-check, user memory); `good bot` and
+GitHub-issue still use the older `models/gemini-2.5-flash-lite:generateContent` and are being migrated.
+Every call includes the `googleSearch` tool so responses are grounded with live web results.
+
+Design intent, boundaries and decisions live in the spec graph: `goal-and-requirements.md`,
+`architecture.md`, and a `SPEC.md` beside each module.
 
 ---
 
