@@ -68,8 +68,6 @@ flowchart LR
 
 ## Known limitations
 
-- `main.py` registers debug handlers on every run: a group −1 logger for all updates and a
-  group 0 "test" `TEXT` handler.
 - People and handles are hardcoded in code and compose defaults: the `McClintock96` "alpha",
   `@guys_being_dudes_bot`, the default allowlisted chat IDs, and the admin username and ID.
 - Each feature builds its own Gemini request, parsing, and error handling. There is no shared client.

@@ -48,6 +48,6 @@ the admin's direct messages are served. Every other update is dropped.
 ## Principles
 
 - Media failures are handled quietly. The bot works through its fallback chain before it reports an
-  error, and it cleans up its status messages.
+  error. Transient progress is cleaned up after success; a terminal failure remains visible.
 - Secrets come only from the environment or mounted files and are never committed.
 - Deployment is a single Docker Compose service. Chat history and memories persist across rebuilds.

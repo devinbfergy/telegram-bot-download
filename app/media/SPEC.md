@@ -30,8 +30,9 @@ detects frozen frames with OpenCV, and `slideshow` builds a video from images wi
 
 ## Boundary
 
-- This module owns user-visible status for the whole download. It edits or deletes the status message
-  and reports errors from `MESSAGES`. Callers do not report errors a second time.
+- This module owns user-visible status for the whole download and reports errors from `MESSAGES`.
+  Successful requests delete transient progress; terminal failures retain one visible error message.
+  Callers do not report errors a second time.
 - Temp directories are always cleaned up.
 - yt-dlp, gallery-dl, FFmpeg, and OpenCV run in threads or subprocesses, with timeouts from
   `AppSettings.timeouts`.

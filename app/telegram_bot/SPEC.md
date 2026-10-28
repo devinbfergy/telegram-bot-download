@@ -12,8 +12,9 @@ depends-on: [media, features, utils]
 This module adapts Telegram to the bot's capabilities. `app_factory` builds the `Application`, attaches
 `AppSettings` as `application.settings["app_settings"]`, and initializes the SQLite schema. `router`
 registers handlers and jobs. `handlers` unpack each update and delegate to `features` or `media`.
-`StatusMessenger` owns the one transient "working on it" message per request: it sends the message,
-edits it, deletes it, and keeps it in the right forum thread.
+`StatusMessenger` owns the one status message per request and keeps it in the right forum thread.
+It deletes transient progress after success and retains a terminal error after failure. If an edit
+fails, ownership is preserved until a replacement is visible or the original can be cleaned up.
 
 ## Routing contract
 
