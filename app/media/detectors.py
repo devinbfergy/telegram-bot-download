@@ -57,7 +57,7 @@ def is_image_url(url: str) -> bool:
     return bool(IMAGE_EXTENSION_PATTERN.search(url.split("?")[0]))
 
 
-def is_video_url(url: str) -> bool:
+def is_video_url(url: str, timeout: float | None = None) -> bool:
     """
     Checks if a URL is a video by attempting a metadata-only extraction with yt-dlp.
     This is a more reliable method than simple regex matching.
@@ -70,6 +70,7 @@ def is_video_url(url: str) -> bool:
         "force_generic_extractor": False,
         "no_warnings": True,
         "dump_single_json": True,
+        "socket_timeout": timeout,
     }
     with YoutubeDL(ydl_opts) as ydl:
         try:

@@ -29,37 +29,50 @@ class StatusMessenger:
         self._message: Message | None = None
         self._terminal_error = False
 
-    async def send_message(self, text: str) -> None:
-        """Send a new status message."""
+    async def send_message(self, text: str) -> bool:
+        """Send a new status message and report whether it became visible."""
         try:
-            self._message = await self.bot.send_message(
+            message = await self.bot.send_message(
                 chat_id=self.chat_id,
                 text=text,
                 message_thread_id=self.message_thread_id,
                 disable_notification=True,
             )
         except Exception:  # noqa: BLE001
+            self._message = None
+            self._terminal_error = False
             log.debug("Failed to send status message")
+            return False
 
-    async def edit_message(self, text: str) -> None:
-        """Edit existing status message or send if none exists."""
+        self._message = message
+        self._terminal_error = False
+        return True
+
+    async def edit_message(self, text: str) -> bool:
+        """Edit an existing status, replacing it if the stored message is stale."""
+        if self._message is None:
+            return await self.send_message(text)
+
         try:
-            if self._message is None:
-                await self.send_message(text)
-            else:
-                await self.bot.edit_message_text(
-                    chat_id=self.chat_id,
-                    message_id=self._message.message_id,
-                    text=text,
-                    message_thread_id=self.message_thread_id,
-                )
+            await self.bot.edit_message_text(
+                chat_id=self.chat_id,
+                message_id=self._message.message_id,
+                text=text,
+                message_thread_id=self.message_thread_id,
+            )
         except Exception:  # noqa: BLE001
-            log.debug("Failed to edit status message")
+            log.debug("Failed to edit status message; sending a replacement")
+            self._message = None
+            self._terminal_error = False
+            return await self.send_message(text)
+
+        self._terminal_error = False
+        return True
 
     async def show_terminal_error(self, text: str) -> None:
         """Display an error and retain it instead of treating it as transient progress."""
-        self._terminal_error = True
-        await self.edit_message(text)
+        visible = await self.edit_message(text)
+        self._terminal_error = visible
 
     async def delete_status_message(self) -> None:
         """Delete the status message if it exists."""
@@ -67,6 +80,7 @@ class StatusMessenger:
             try:
                 await self._message.delete()
                 self._message = None
+                self._terminal_error = False
             except Exception:  # noqa: BLE001
                 log.debug("Failed to delete status message")
 

@@ -111,14 +111,14 @@ async def call_gemini_for_memory(prompt: str, settings: AppSettings) -> str | No
             if parts:
                 return parts[0].get("text", "").strip()
 
-        logger.error("user_memory: unexpected response shape from Gemini: %s", data)
+        logger.error("user_memory: unexpected response shape from Gemini")
         return None
 
     except aiohttp.ClientError:
-        logger.exception("user_memory: Gemini request failed")
+        logger.error("user_memory: Gemini request failed")
         return None
-    except Exception:
-        logger.exception("user_memory: unexpected error calling Gemini")
+    except Exception:  # noqa: BLE001
+        logger.error("user_memory: unexpected error calling Gemini")
         return None
 
 
@@ -249,8 +249,8 @@ async def user_memory_cron_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         stats = await update_all_user_memories(app_settings)
         logger.info("user_memory: scheduled job finished: %s", stats)
-    except Exception:
-        logger.exception("user_memory: scheduled job failed")
+    except Exception:  # noqa: BLE001
+        logger.error("user_memory: scheduled job failed")
 
 
 async def get_memories_prompt_block(
@@ -286,8 +286,8 @@ async def get_memories_prompt_block(
             return ""
 
         return "\n".join(lines)
-    except Exception:
-        logger.exception("user_memory: could not load memories prompt block")
+    except Exception:  # noqa: BLE001
+        logger.error("user_memory: could not load memories prompt block")
         return ""
 
 

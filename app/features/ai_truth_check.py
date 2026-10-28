@@ -136,7 +136,7 @@ async def ai_truth_check(
             annotations = content_block.get("annotations", [])
             reply_text, parse_mode = _format_with_citations(raw_text, annotations)
         except (KeyError, IndexError, StopIteration, TypeError):
-            logger.error("ai_truth_check: unexpected Gemini response shape: %s", data)
+            logger.error("ai_truth_check: unexpected Gemini response shape")
             reply_text = MESSAGES["error_generic"]
             parse_mode = None
 
@@ -145,13 +145,13 @@ async def ai_truth_check(
         )
 
     except aiohttp.ClientError:
-        logger.exception("ai_truth_check: Gemini request failed")
+        logger.error("ai_truth_check: Gemini request failed")
         await update.message.reply_text(
             MESSAGES["error_ai_api_request_failed"],
             disable_notification=True,
         )
-    except Exception:
-        logger.exception("ai_truth_check: unexpected error")
+    except Exception:  # noqa: BLE001
+        logger.error("ai_truth_check: unexpected error")
         await update.message.reply_text(
             MESSAGES["error_generic"], disable_notification=True
         )

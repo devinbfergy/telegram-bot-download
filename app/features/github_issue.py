@@ -128,8 +128,8 @@ async def fetch_recent_messages(
                 )
                 messages.append(f"@{sender} (issue request): {combined_content}")
 
-    except Exception:
-        logger.exception("Error fetching messages")
+    except Exception:  # noqa: BLE001
+        logger.error("Error fetching messages")
 
     return messages
 
@@ -168,16 +168,16 @@ async def summarize_with_gemini(
             try:
                 response_text = data["candidates"][0]["content"]["parts"][0]["text"]
             except (KeyError, IndexError):
-                logger.error(f"Invalid response structure from Gemini: {data}")
+                logger.error("Invalid response structure from Gemini")
                 return None
 
             return parse_gemini_response(response_text)
 
     except aiohttp.ClientError:
-        logger.exception("Gemini API request failed")
+        logger.error("Gemini API request failed")
         return None
-    except Exception:
-        logger.exception("Unexpected error in Gemini summarization")
+    except Exception:  # noqa: BLE001
+        logger.error("Unexpected error in Gemini summarization")
         return None
 
 
@@ -185,7 +185,7 @@ def parse_gemini_response(response_text: str) -> IssueSummary | None:
     """Parse the Gemini response to extract title and body."""
     try:
         if "---TITLE---" not in response_text or "---BODY---" not in response_text:
-            logger.error(f"Invalid Gemini response format: {response_text[:200]}")
+            logger.error("Invalid Gemini response format")
             return None
 
         # Split by markers
@@ -206,8 +206,8 @@ def parse_gemini_response(response_text: str) -> IssueSummary | None:
 
         return IssueSummary(title=title, body=body)
 
-    except Exception:
-        logger.exception("Error parsing Gemini response")
+    except Exception:  # noqa: BLE001
+        logger.error("Error parsing Gemini response")
         return None
 
 
@@ -247,8 +247,10 @@ async def create_github_issue(
                 # Log the error but continue retrying for transient errors
                 error_text = await response.text()
                 logger.warning(
-                    f"GitHub API error (attempt {attempt + 1}/{MAX_RETRIES}): "
-                    f"status={response.status}, body={error_text[:200]}"
+                    "GitHub API error (attempt %d/%d): status=%s",
+                    attempt + 1,
+                    MAX_RETRIES,
+                    response.status,
                 )
 
                 # Don't retry on client errors (4xx) except rate limiting
@@ -259,18 +261,22 @@ async def create_github_issue(
                     # Client error, don't retry
                     return None
 
-        except aiohttp.ClientError as e:
-            last_error = e
+        except aiohttp.ClientError:
+            last_error = True
             logger.warning(
-                f"GitHub API request failed (attempt {attempt + 1}/{MAX_RETRIES}): {e}"
+                "GitHub API request failed (attempt %d/%d)",
+                attempt + 1,
+                MAX_RETRIES,
             )
 
         # Wait before retrying
         if attempt < MAX_RETRIES - 1:
             await asyncio.sleep(RETRY_DELAY_SECONDS * (attempt + 1))
 
-    logger.exception(
-        f"Failed to create GitHub issue after {MAX_RETRIES} attempts: {last_error}"
+    logger.error(
+        "Failed to create GitHub issue after %d attempts (request_error=%s)",
+        MAX_RETRIES,
+        bool(last_error),
     )
     return None
 
@@ -329,8 +335,8 @@ async def open_github_issue(
                     messages.append(
                         f"\n[System context: Recent download issues in this chat]\n{formatted_issues}"
                     )
-        except Exception as exc:  # noqa: BLE001
-            logger.debug(f"Could not load download issues for issue summary: {exc}")
+        except Exception:  # noqa: BLE001
+            logger.debug("Could not load download issues for issue summary")
 
         # Update status
         await status_message.edit_text(MESSAGES["github_issue_summarizing"])
@@ -363,9 +369,9 @@ async def open_github_issue(
             MESSAGES["github_issue_created"].format(url=issue_url)
         )
 
-    except Exception:
-        logger.exception("Unexpected error in open_github_issue")
+    except Exception:  # noqa: BLE001
+        logger.error("Unexpected error in open_github_issue")
         try:
             await status_message.edit_text(MESSAGES["error_generic"])
-        except Exception:
-            logger.debug("Could not edit failed issue status", exc_info=True)
+        except Exception:  # noqa: BLE001
+            logger.debug("Could not edit failed issue status")

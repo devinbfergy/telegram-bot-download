@@ -61,7 +61,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         if is_tiktok_photo_url(url):
             await status_messenger.send_message(MESSAGES["tiktok_photo_alert"])
         elif (
-            await run_blocking(is_video_url, url)
+            await run_blocking(is_video_url, url, settings.timeouts["yt_dlp"])
             or is_image_url(url)
             or "snapchat" in url
             or "facebook" in url

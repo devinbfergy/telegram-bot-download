@@ -27,6 +27,19 @@ def test_is_video_basic(mock_ytdl):
     assert is_video_url("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
 
 
+@patch("app.media.detectors.YoutubeDL")
+def test_is_video_passes_socket_timeout_to_ytdlp(mock_ytdl):
+    mock_instance = MagicMock()
+    mock_instance.extract_info.return_value = {
+        "extractor": "youtube",
+        "formats": [{"format_id": "best"}],
+    }
+    mock_ytdl.return_value.__enter__.return_value = mock_instance
+
+    assert is_video_url("https://example.com/video", timeout=17.5)
+    assert mock_ytdl.call_args.args[0]["socket_timeout"] == 17.5
+
+
 def test_is_image_basic():
     assert is_image_url("https://foo.bar/pic.png")
 

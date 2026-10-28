@@ -35,6 +35,54 @@ async def test_terminal_status_is_distinct_from_transient_progress(settings):
 
 
 @pytest.mark.asyncio
+async def test_terminal_status_replaces_stale_message_after_failed_edit(settings):
+    bot = AsyncMock()
+    stale_message = AsyncMock(message_id=1)
+    replacement = AsyncMock(message_id=2)
+    bot.send_message.side_effect = [stale_message, replacement]
+    bot.edit_message_text.side_effect = RuntimeError("message no longer exists")
+    status = StatusMessenger(bot, 123, settings)
+    await status.send_message("working")
+
+    await status.show_terminal_error("failed")
+
+    assert status._message is replacement
+    assert status.has_terminal_error() is True
+    assert bot.send_message.await_args_list[-1].kwargs["text"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_failed_terminal_replacement_has_no_stale_ownership(settings):
+    bot = AsyncMock()
+    stale_message = AsyncMock(message_id=1)
+    bot.send_message.side_effect = [stale_message, RuntimeError("send failed")]
+    bot.edit_message_text.side_effect = RuntimeError("edit failed")
+    status = StatusMessenger(bot, 123, settings)
+    await status.send_message("working")
+
+    await status.show_terminal_error("failed")
+
+    assert status.has_active_message() is False
+    assert status.has_terminal_error() is False
+
+
+@pytest.mark.asyncio
+async def test_successful_progress_after_terminal_can_be_cleaned_up(settings):
+    bot = AsyncMock()
+    message = AsyncMock(message_id=1)
+    bot.send_message.return_value = message
+    status = StatusMessenger(bot, 123, settings)
+    await status.show_terminal_error("failed")
+
+    await status.edit_message("retrying")
+    await status.delete_status_message()
+
+    assert status.has_active_message() is False
+    assert status.has_terminal_error() is False
+    message.delete.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_start_handler():
     """
     Test that the start handler replies with the correct welcome message.
@@ -93,8 +141,11 @@ async def test_handle_message_with_video_url(MockDownloader, mock_run_blocking):
 
     # Assert
     MockDownloader.assert_called_once()
-    mock_run_blocking.assert_awaited_once()
-    assert mock_run_blocking.await_args.args[0] is mock_is_video
+    mock_run_blocking.assert_awaited_once_with(
+        mock_is_video,
+        "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        application.settings["app_settings"].timeouts["yt_dlp"],
+    )
     mock_downloader_instance.download_and_send_media.assert_called_once_with(
         "https://www.youtube.com/watch?v=dQw4w9WgXcQ", update.message
     )

@@ -96,29 +96,26 @@ async def good_bot_catgirl(
             session.post(api_url, headers=headers, json=payload) as response,
         ):
             if response.status != 200:
-                error_text = await response.text()
-                logger.error(
-                    f"Gemini API error (status {response.status}): {error_text}"
-                )
+                logger.error("Gemini API error (status %s)", response.status)
             response.raise_for_status()
             data = await response.json()
 
             try:
                 reply_text = data["candidates"][0]["content"]["parts"][0]["text"]
             except (KeyError, IndexError):
-                logger.error(f"Invalid response structure from Gemini: {data}")
+                logger.error("Invalid response structure from Gemini")
                 reply_text = MESSAGES["error_generic"]
 
             await update.message.reply_text(reply_text, disable_notification=True)
 
     except aiohttp.ClientError:
-        logger.exception("Gemini API request failed in catgirl feature")
+        logger.error("Gemini API request failed in catgirl feature")
         await update.message.reply_text(
             MESSAGES["error_catgirl_api_request_failed"],
             disable_notification=True,
         )
-    except Exception:
-        logger.exception("An unexpected error occurred in good bot catgirl")
+    except Exception:  # noqa: BLE001
+        logger.error("An unexpected error occurred in good bot catgirl")
         await update.message.reply_text(
             MESSAGES["error_generic"], disable_notification=True
         )
@@ -177,8 +174,8 @@ async def _gather_conversation_context(
 
         return "\n".join(context_messages)
 
-    except Exception as e:  # noqa: BLE001
-        logger.warning(f"Could not gather conversation context: {e}")
+    except Exception:  # noqa: BLE001
+        logger.warning("Could not gather conversation context")
         if is_alpha:
             return "Your alpha McClintock96 just said 'good bot' to praise you!"
         else:
