@@ -18,7 +18,7 @@ detects frozen frames with OpenCV, and `slideshow` builds a video from images wi
 
 1. Pick a profile from the URL (`shorts`, `instagram`, `tiktok`, or `default`). Callers can force one;
    `bad bot` uses `telegram`. For Instagram, attach a cookie file. A mounted `INSTAGRAM_COOKIE_FILE`
-   takes precedence over a cookie file built from `INSTAGRAM_SESSIONID`.
+   takes precedence over a cookie file built from `INSTAGRAM_SESSIONID`. It is copied into the per-download temp dir first, because yt-dlp rewrites its cookie jar on exit and `/data/secrets` is mounted read-only. The Chrome headers in `instagram_session.json` (same directory) are sent as the User-Agent so the bot matches the browser that owns the session. If a cookie-authenticated download fails, it is retried once without cookies.
 2. Run yt-dlp in a temp dir. If the result is a slideshow, hand off to gallery-dl.
 3. If the video is frozen, retry with the `fallback` profile. If that video is also frozen, hand off
    to gallery-dl.

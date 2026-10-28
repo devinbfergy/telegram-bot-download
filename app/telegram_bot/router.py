@@ -111,6 +111,18 @@ def register(application: Application) -> Application:
     )
     logger.info("Registered handle_user_memory handler")
 
+    # "@gork (failed|issues)" or "@guys_being_dudes_bot (failed|issues)" → show download issues
+    application.add_handler(
+        MessageHandler(
+            filters.TEXT
+            & filters.Regex(
+                r"(?i)(@gork|@guys_being_dudes_bot)\s+(failed|issues|status)"
+            ),
+            handlers.handle_download_issues,
+        )
+    )
+    logger.info("Registered handle_download_issues handler")
+
     # Generic @gork or @guys_being_dudes_bot mention (anything not caught above)
     application.add_handler(
         MessageHandler(

@@ -14,7 +14,11 @@ from app.features.user_memory import show_user_memory
 from app.media.detectors import is_image_url, is_tiktok_photo_url, is_video_url
 from app.media.downloader import Downloader
 from app.telegram_bot.status_messenger import StatusMessenger
-from app.utils.database import record_user_interaction, store_message
+from app.utils.database import (
+    get_recent_download_issues,
+    record_user_interaction,
+    store_message,
+)
 from app.utils.validation import extract_url, is_chat_allowed
 
 logger = logging.getLogger(__name__)
@@ -234,6 +238,54 @@ async def handle_user_memory(
 
     settings: AppSettings = context.application.settings["app_settings"]
     await show_user_memory(update, context, settings)
+
+
+async def handle_download_issues(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """
+    Handles '@gork failed' or '@gork issues' to show recent download problems.
+    """
+    logger.info(f"handle_download_issues called with update: {update.update_id}")
+
+    if not update.message:
+        return
+
+    settings: AppSettings = context.application.settings["app_settings"]
+    db_path = str(settings.db_path)
+    chat_id = update.effective_chat.id if update.effective_chat else 0
+
+    issues = await get_recent_download_issues(
+        db_path, chat_id=chat_id, hours=24.0, limit=5
+    )
+    if not issues:
+        await update.message.reply_text(
+            "Clean record! No failed downloads or incomplete albums tracked recently.",
+            disable_notification=True,
+        )
+        return
+
+    lines = ["Here are the recent download issues tracked in this chat:"]
+    for issue in issues:
+        sender = (
+            issue.first_name
+            or (f"@{issue.username}" if issue.username else None)
+            or "someone"
+        )
+        if issue.issue_type == "incomplete_album":
+            msg = (
+                f"• [Incomplete Album] {issue.url}\n"
+                f"  (only got {issue.downloaded_items or 0} of {issue.total_items or '?'} photos/items, requested by {sender})"
+            )
+        else:
+            reason = issue.error_message or "Download failed"
+            msg = f"• [Failed] {issue.url}\n  (reason: {reason}, requested by {sender})"
+        lines.append(msg)
+
+    lines.append(
+        "Tip: Tag me with '@gork open issue' if you want me to file a GitHub bug report for any of these."
+    )
+    await update.message.reply_text("\n\n".join(lines), disable_notification=True)
 
 
 async def handle_mention(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

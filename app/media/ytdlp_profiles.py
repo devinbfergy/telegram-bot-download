@@ -166,11 +166,13 @@ def get_instagram_profile() -> Dict[str, Any]:
     Optimized profile for Instagram reels and posts.
     - Prefers pre-merged formats to avoid ffmpeg merge failures
     - Impersonates Chrome (curl-cffi) to reduce login walls
+    - Allows playlists (carousels/albums) so multi-item posts are detected
     - Re-encodes to libx264 yuv420p for smooth Telegram playback without freezing
     """
     profile = _BASE_PROFILE.copy()
     profile.update(
         {
+            "noplaylist": False,
             "format": (
                 "best[ext=mp4][height<=1080]/"
                 "best[ext=mp4]/"

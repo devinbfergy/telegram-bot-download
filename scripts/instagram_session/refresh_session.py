@@ -1,59 +1,79 @@
 # /// script
 # requires-python = ">=3.12"
 # dependencies = [
-#     "rookiepy>=0.5",
 #     "requests>=2.32",
+#     "websocket-client>=1.8",
 # ]
 # ///
 """
-Refresh the Instagram session used by the Telegram bot.
+Keep the Instagram session used by the Telegram bot alive, as a real Chrome would.
 
-What it does:
-  1. Extracts instagram.com cookies from the local Chrome profile
-     (requires an elevated/admin run on Windows: Chrome >= 130 uses
-     app-bound encryption).
-  2. Writes them as a Netscape cookies.txt to secrets/instagram_cookies.txt
-     (atomic replace; the directory is mounted read-only into the container).
-  3. Performs a keep-alive request against Instagram so the session stays
-     active, capturing any rotated cookies (Instagram periodically re-issues
-     sessionid) and saving them back.
-  4. Reports session health. Optionally sends a Telegram alert when the
-     session is dead (needs API_TOKEN in .env and --notify-chat-id /
-     IG_NOTIFY_CHAT_ID).
+Why a dedicated Chrome profile: Chrome (>= 127) encrypts cookies with app-bound
+encryption, so they cannot be copied out of your everyday profile. Instead the bot owns a
+persistent Chrome profile (outside the repo). You log in to Instagram in it ONCE
+(`--login`), and from then on this script:
+
+  1. starts the installed Chrome headless on that profile (same TLS fingerprint, same
+     User-Agent and client hints as your browser, same machine and IP),
+  2. loads instagram.com so the session is genuinely used and Instagram rotates cookies,
+  3. reads the cookies over the DevTools protocol and writes them atomically as a Netscape
+     secrets/instagram_cookies.txt (mounted read-only into the container),
+  4. records Chrome's real request headers in secrets/instagram_session.json so the bot's
+     yt-dlp / gallery-dl send the very same User-Agent,
+  5. reports session health, optionally alerting via Telegram when the login is dead.
 
 Usage:
-    uv run scripts/instagram_session/refresh_session.py
-    uv run scripts/instagram_session/refresh_session.py --browser firefox
-    uv run scripts/instagram_session/refresh_session.py --notify-chat-id 123456
+    uv run scripts/instagram_session/refresh_session.py --login   # once: log in, visible
+    uv run scripts/instagram_session/refresh_session.py           # refresh (scheduled)
 """
 
 from __future__ import annotations
 
 import argparse
-import ctypes
+import contextlib
 import datetime
+import http.server
+import json
 import logging
 import os
+import random
+import subprocess
 import sys
 import tempfile
+import threading
+import time
+import urllib.request
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SECRETS_DIR = REPO_ROOT / "secrets"
 COOKIE_FILE = SECRETS_DIR / "instagram_cookies.txt"
+FINGERPRINT_FILE = SECRETS_DIR / "instagram_session.json"
 LOG_FILE = SECRETS_DIR / "refresh.log"
 ENV_FILE = REPO_ROOT / ".env"
+PROFILE_DIR = (
+    Path(os.environ.get("LOCALAPPDATA", str(Path.home())))
+    / "telegram-bot-download"
+    / "chrome-profile"
+)
 
-IG_APP_ID = "936619743392459"
-IG_UA = (
+IG_HOME = "https://www.instagram.com/"
+IG_LOGIN = "https://www.instagram.com/accounts/login/"
+FALLBACK_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    "(KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36"
 )
 
 logger = logging.getLogger("ig_session_refresh")
 
 
+# --------------------------------------------------------------------------- logging
 def _setup_logging() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, OSError):
+            pass
     SECRETS_DIR.mkdir(parents=True, exist_ok=True)
     logger.setLevel(logging.INFO)
     fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
@@ -63,15 +83,6 @@ def _setup_logging() -> None:
     ):
         handler.setFormatter(fmt)
         logger.addHandler(handler)
-
-
-def _is_admin() -> bool:
-    if os.name != "nt":
-        return os.geteuid() == 0
-    try:
-        return bool(ctypes.windll.shell32.IsUserAnAdmin())
-    except (AttributeError, OSError):
-        return False
 
 
 def _read_env_token() -> str:
@@ -84,6 +95,7 @@ def _read_env_token() -> str:
     return ""
 
 
+# --------------------------------------------------------------------------- cookies
 def cookie_expires(cookie: dict) -> int:
     raw = cookie.get("expires")
     if raw in (None, 0, "0"):
@@ -95,7 +107,7 @@ def cookie_expires(cookie: dict) -> int:
 
 
 def cookies_to_netscape(cookies: list[dict]) -> str:
-    """Serialize rookiepy (or Chrome DevTools-style) cookies to Netscape format."""
+    """Serialize cookies (rookiepy- or DevTools-style dicts) to Netscape format."""
     lines = ["# Netscape HTTP Cookie File"]
     for cookie in cookies:
         name = cookie.get("name") or ""
@@ -116,22 +128,6 @@ def cookies_to_netscape(cookies: list[dict]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def extract_cookies(browser: str) -> list[dict]:
-    """Extract instagram.com cookies from the given browser via rookiepy."""
-    import rookiepy
-
-    loader = getattr(rookiepy, browser, None)
-    if loader is None:
-        raise ValueError(f"Unsupported browser: {browser}")
-    cookies = loader(["instagram.com"])
-    if not cookies:
-        raise RuntimeError(
-            f"No instagram.com cookies found in {browser}. "
-            "Make sure you are logged into Instagram in that browser."
-        )
-    return cookies
-
-
 def write_netscape(cookies: list[dict], dest: Path) -> None:
     """Atomically write cookies in Netscape cookies.txt format."""
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -148,49 +144,198 @@ def write_netscape(cookies: list[dict], dest: Path) -> None:
         raise
 
 
-def keep_alive(cookie_file: Path) -> tuple[bool, str]:
-    """
-    Hit Instagram with the stored cookies to keep the session active and
-    capture rotated cookies. Returns (alive, detail).
-    """
-    from http.cookiejar import MozillaCookieJar
+def _normalize_ig_cookies(raw: list[dict]) -> list[dict]:
+    return [
+        {
+            "name": c["name"],
+            "value": c["value"],
+            "domain": c["domain"],
+            "path": c.get("path", "/"),
+            "secure": c.get("secure", False),
+            "http_only": c.get("httpOnly", False),
+            "expires": int(c["expires"]) if c.get("expires", -1) > 0 else 0,
+        }
+        for c in raw
+        if "instagram.com" in c.get("domain", "")
+    ]
 
-    import requests
 
-    jar = MozillaCookieJar(str(cookie_file))
-    jar.load(ignore_discard=True, ignore_expires=True)
+# --------------------------------------------------------------------------- chrome
+def find_chrome() -> str | None:
+    candidates = [
+        os.path.join(
+            os.environ.get(var, ""), "Google", "Chrome", "Application", "chrome.exe"
+        )
+        for var in ("PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA")
+    ]
+    return next((c for c in candidates if os.path.isfile(c)), None)
 
-    session = requests.Session()
-    session.cookies = jar
-    session.headers.update({"User-Agent": IG_UA, "x-ig-app-id": IG_APP_ID})
 
-    ds_user_id = next((c.value for c in jar if c.name == "ds_user_id"), "")
-    urls = []
-    if ds_user_id:
-        urls.append(f"https://www.instagram.com/api/v1/feed/user/{ds_user_id}/?count=1")
-    urls.append("https://www.instagram.com/accounts/edit/")
+class ChromeSession:
+    """A Chrome instance on the bot profile, driven over the DevTools protocol."""
 
-    for url in urls:
-        try:
-            resp = session.get(url, timeout=30, allow_redirects=True)
-        except requests.RequestException as exc:
-            return False, f"network error during keep-alive: {exc}"
-
-        if resp.status_code == 200 and "accounts/login" not in resp.url:
-            try:
-                jar.save(ignore_discard=True, ignore_expires=False)
-            except OSError as exc:
-                logger.warning("Could not save rotated cookies: %s", exc)
-            return True, f"keep-alive OK via {url}"
-
-        if resp.status_code in (401, 403) or "accounts/login" in resp.url:
-            return False, (
-                f"session rejected by Instagram (HTTP {resp.status_code} via {url})"
+    def __init__(self, headless: bool = True) -> None:
+        chrome = find_chrome()
+        if not chrome:
+            raise RuntimeError("chrome.exe not found")
+        PROFILE_DIR.mkdir(parents=True, exist_ok=True)
+        (PROFILE_DIR / "DevToolsActivePort").unlink(missing_ok=True)
+        args = [
+            chrome,
+            "--remote-debugging-port=0",
+            f"--user-data-dir={PROFILE_DIR}",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--disable-features=Translate",
+        ]
+        if headless:
+            args += ["--headless=new", "--disable-gpu"]
+        args.append("about:blank")
+        self.proc = subprocess.Popen(
+            args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+        port_file = PROFILE_DIR / "DevToolsActivePort"
+        deadline = time.time() + 45
+        while time.time() < deadline and not port_file.is_file():
+            time.sleep(0.3)
+        if not port_file.is_file():
+            self.close()
+            raise RuntimeError(
+                "Chrome did not start (is another Chrome using the bot profile?)"
             )
+        self.port = port_file.read_text().splitlines()[0].strip()
+        import websocket
 
-    return False, "unexpected keep-alive response"
+        info = json.loads(
+            urllib.request.urlopen(
+                f"http://127.0.0.1:{self.port}/json/version", timeout=10
+            ).read()
+        )
+        self.user_agent: str = info.get("User-Agent", FALLBACK_UA)
+        self._ws = websocket.create_connection(info["webSocketDebuggerUrl"], timeout=60)
+        self._next_id = 0
+
+    def call(self, method: str, params: dict | None = None, session: str = "") -> dict:
+        self._next_id += 1
+        msg: dict = {"id": self._next_id, "method": method, "params": params or {}}
+        if session:
+            msg["sessionId"] = session
+        self._ws.send(json.dumps(msg))
+        while True:
+            reply = json.loads(self._ws.recv())
+            if reply.get("id") == self._next_id:
+                break
+        if "error" in reply:
+            raise RuntimeError(f"DevTools {method}: {reply['error']}")
+        return reply["result"]
+
+    def cookies(self) -> list[dict]:
+        return self.call("Storage.getCookies")["cookies"]
+
+    def open_page(self, url: str) -> str:
+        """Open a tab (with a non-headless User-Agent) and return its session id."""
+        target = self.call("Target.createTarget", {"url": "about:blank"})["targetId"]
+        session = self.call(
+            "Target.attachToTarget", {"targetId": target, "flatten": True}
+        )["sessionId"]
+        self.call(
+            "Network.setUserAgentOverride",
+            {"userAgent": real_user_agent(self.user_agent)},
+            session,
+        )
+        self.call("Page.navigate", {"url": url}, session)
+        return session
+
+    def page_url(self, session: str) -> str:
+        res = self.call("Runtime.evaluate", {"expression": "location.href"}, session)
+        return str(res.get("result", {}).get("value", ""))
+
+    def close(self) -> None:
+        with contextlib.suppress(Exception):
+            self.call("Browser.close")  # graceful: flushes cookies to disk
+        try:
+            self.proc.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            self.proc.kill()
+        _kill_profile_chrome()
 
 
+def real_user_agent(ua: str) -> str:
+    return ua.replace("HeadlessChrome", "Chrome")
+
+
+def _kill_profile_chrome() -> None:
+    """Make sure no chrome.exe is left holding the bot profile."""
+    marker = str(PROFILE_DIR).replace("'", "''")
+    subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-Command",
+            (
+                "Get-CimInstance Win32_Process -Filter \"Name='chrome.exe'\" | "
+                f"Where-Object {{ $_.CommandLine -like '*{marker}*' }} | "
+                "ForEach-Object { Stop-Process -Id $_.ProcessId -Force "
+                "-ErrorAction SilentlyContinue }"
+            ),
+        ],
+        capture_output=True,
+        check=False,
+    )
+
+
+# --------------------------------------------------------------------------- fingerprint
+def capture_headers(browser: ChromeSession) -> dict[str, str]:
+    """Record the request headers this Chrome really sends (UA, sec-ch-ua*, ...)."""
+    captured: dict[str, str] = {}
+    got = threading.Event()
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            if self.path.startswith("/probe") and not got.is_set():
+                captured.update({k.lower(): v for k, v in self.headers.items()})
+                got.set()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.end_headers()
+            self.wfile.write(b"<html><body>ok</body></html>")
+
+        def log_message(self, *_args: object) -> None:
+            pass
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        browser.call(
+            "Target.createTarget",
+            {"url": f"http://localhost:{server.server_address[1]}/probe"},
+        )
+        got.wait(timeout=30)
+    finally:
+        server.shutdown()
+    if not captured:
+        raise RuntimeError("Chrome did not make a probe request")
+    keep = (
+        "user-agent",
+        "sec-ch-ua",
+        "sec-ch-ua-mobile",
+        "sec-ch-ua-platform",
+        "accept-language",
+    )
+    fp = {k: v for k, v in captured.items() if k in keep}
+    if "sec-ch-ua" in fp:
+        fp["sec-ch-ua"] = fp["sec-ch-ua"].replace("HeadlessChrome", "Google Chrome")
+    fp["user-agent"] = real_user_agent(fp.get("user-agent", browser.user_agent))
+    return fp
+
+
+def save_fingerprint(fp: dict[str, str]) -> None:
+    tmp = FINGERPRINT_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(fp, indent=2), encoding="utf-8")
+    os.replace(tmp, FINGERPRINT_FILE)
+
+
+# --------------------------------------------------------------------------- notify
 def notify_telegram(text: str, chat_id: str, token: str) -> None:
     import requests
 
@@ -213,89 +358,99 @@ def notify_telegram(text: str, chat_id: str, token: str) -> None:
         logger.warning("Telegram alert failed: %s", exc)
 
 
+# --------------------------------------------------------------------------- commands
+def do_login() -> int:
+    """Open a visible Chrome on the bot profile and wait until Instagram is logged in."""
+    logger.info(
+        "Opening Chrome on the bot profile. Log in to Instagram in that window."
+    )
+    browser = ChromeSession(headless=False)
+    try:
+        browser.call("Target.createTarget", {"url": IG_LOGIN})
+        deadline = time.time() + 15 * 60
+        while time.time() < deadline:
+            time.sleep(3)
+            try:
+                names = {c["name"] for c in _normalize_ig_cookies(browser.cookies())}
+            except Exception:  # noqa: BLE001 - window closed by the user
+                break
+            if "sessionid" in names:
+                time.sleep(5)  # let Instagram finish setting cookies
+                logger.info("Login detected. The bot profile now holds a session.")
+                return 0
+        logger.error("No Instagram login detected (timed out or window closed).")
+        return 1
+    finally:
+        browser.close()
+
+
+def do_refresh(args: argparse.Namespace) -> int:
+    if not (PROFILE_DIR / "Default").exists():
+        logger.error(
+            "Bot Chrome profile has no login yet. Run once: "
+            "uv run scripts/instagram_session/refresh_session.py --login"
+        )
+        return 1
+    try:
+        browser = ChromeSession(headless=True)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Could not start Chrome: %s", exc)
+        return 1
+
+    try:
+        session = browser.open_page(IG_HOME)
+        time.sleep(random.uniform(6, 10))  # let the page settle like a person would
+        final_url = browser.page_url(session)
+        cookies = _normalize_ig_cookies(browser.cookies())
+        names = {c["name"] for c in cookies}
+        try:
+            save_fingerprint(capture_headers(browser))
+            logger.info(
+                "Captured Chrome headers: %s", real_user_agent(browser.user_agent)
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Header capture failed: %s", exc)
+    finally:
+        browser.close()
+
+    token = _read_env_token()
+    if "sessionid" not in names or "accounts/login" in final_url:
+        logger.error(
+            "Session DEAD: no valid Instagram login in the bot profile (url=%s).",
+            final_url,
+        )
+        notify_telegram(
+            "❌ Instagram session is dead. Re-login once with: "
+            "uv run scripts/instagram_session/refresh_session.py --login",
+            args.notify_chat_id,
+            token,
+        )
+        return 1
+
+    write_netscape(cookies, COOKIE_FILE)
+    logger.info("Session alive. Wrote %d cookies to %s", len(cookies), COOKIE_FILE)
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--browser",
-        default="chrome",
-        help="Browser to extract cookies from (default: chrome)",
+        "--login", action="store_true", help="One-time interactive Instagram login"
     )
     parser.add_argument(
         "--notify-chat-id",
         default=os.getenv("IG_NOTIFY_CHAT_ID", ""),
         help="Telegram chat id to alert when the session is dead",
     )
-    parser.add_argument(
-        "--skip-keepalive",
-        action="store_true",
-        help="Only extract and write cookies",
-    )
     args = parser.parse_args()
 
     _setup_logging()
     logger.info(
-        "=== Instagram session refresh started (%s) ===",
+        "=== Instagram session %s started (%s) ===",
+        "login" if args.login else "refresh",
         datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds"),
     )
-
-    if os.name == "nt" and args.browser == "chrome" and not _is_admin():
-        logger.error(
-            "Not running as admin. Chrome >= 130 uses app-bound encryption, so "
-            "cookie extraction requires elevation. Re-run from an elevated shell "
-            "or register the scheduled task with 'Run with highest privileges'."
-        )
-        return 2
-
-    try:
-        cookies = extract_cookies(args.browser)
-    except Exception as exc:  # noqa: BLE001
-        logger.error("Cookie extraction failed: %s", exc)
-        notify_telegram(
-            f"⚠️ Instagram session refresh: extraction failed ({exc}). "
-            "The bot may fail to download Instagram media.",
-            args.notify_chat_id,
-            _read_env_token(),
-        )
-        return 1
-
-    names = sorted({c.get("name", "") for c in cookies})
-    logger.info(
-        "Extracted %d cookies from %s: %s", len(cookies), args.browser, ", ".join(names)
-    )
-
-    if "sessionid" not in names:
-        logger.error(
-            "No 'sessionid' cookie found - Instagram login is missing or expired "
-            "in the browser."
-        )
-        notify_telegram(
-            "⚠️ Instagram session refresh: no sessionid cookie in Chrome. "
-            "Log into instagram.com in Chrome, then the task will recover automatically.",
-            args.notify_chat_id,
-            _read_env_token(),
-        )
-        return 1
-
-    write_netscape(cookies, COOKIE_FILE)
-    logger.info("Wrote %s", COOKIE_FILE)
-
-    if args.skip_keepalive:
-        return 0
-
-    alive, detail = keep_alive(COOKIE_FILE)
-    if alive:
-        logger.info("Session alive: %s", detail)
-        return 0
-
-    logger.error("Session DEAD: %s", detail)
-    notify_telegram(
-        "❌ Instagram session is dead (Instagram rejected the stored cookies). "
-        "Log into instagram.com in Chrome; the scheduled refresh task will pick it up. "
-        f"Detail: {detail}",
-        args.notify_chat_id,
-        _read_env_token(),
-    )
-    return 1
+    return do_login() if args.login else do_refresh(args)
 
 
 if __name__ == "__main__":

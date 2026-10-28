@@ -102,7 +102,7 @@ def is_video_url(url: str) -> bool:
 
 def is_slideshow(info_dict: dict) -> bool:
     """
-    Detects if the yt-dlp info dict represents a TikTok/Instagram slideshow (photo mode).
+    Detects if the yt-dlp info dict represents a TikTok/Instagram slideshow or photo album.
     """
     if not isinstance(info_dict, dict):
         return False
@@ -116,14 +116,22 @@ def is_slideshow(info_dict: dict) -> bool:
         if not entries:
             return False
 
-        # Check if all entries are image-like
-        image_like_count = sum(
-            1
-            for e in entries
-            if e and (e.get("ext") or "").lower() in ("jpg", "jpeg", "png", "webp")
-        )
-        return image_like_count > 0 and image_like_count == len(
-            [e for e in entries if e]
-        )
+        valid_entries = [e for e in entries if e]
+        if not valid_entries:
+            return False
+
+        # If it's an Instagram playlist, it's a multi-item carousel/album
+        if info_dict.get("extractor_key") == "Instagram":
+            return True
+
+        # Check if all entries are image-like (e.g. TikTok photo mode)
+        def _is_image_entry(e: dict) -> bool:
+            ext = (e.get("ext") or "").lower()
+            if ext:
+                return ext in ("jpg", "jpeg", "png", "webp")
+            return not e.get("formats")
+
+        image_like_count = sum(1 for e in valid_entries if _is_image_entry(e))
+        return image_like_count > 0 and image_like_count == len(valid_entries)
 
     return False

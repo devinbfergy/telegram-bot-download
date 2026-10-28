@@ -40,6 +40,20 @@ class UserMemory(NamedTuple):
     chat_id: int = 0
 
 
+class DownloadIssue(NamedTuple):
+    chat_id: int
+    url: str
+    issue_type: str  # e.g. 'failed', 'incomplete_album'
+    error_message: str | None = None
+    total_items: int | None = None
+    downloaded_items: int | None = None
+    timestamp: float = 0.0
+    user_id: int | None = None
+    username: str | None = None
+    first_name: str | None = None
+    id: int | None = None
+
+
 # ---------------------------------------------------------------------------
 # Synchronous helpers (run inside a thread)
 # ---------------------------------------------------------------------------
@@ -103,6 +117,29 @@ def init_db_sync(db_path: str) -> None:
         conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_user_memories_updated
             ON user_memories (updated_at)
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS download_issues (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                chat_id          INTEGER NOT NULL,
+                user_id          INTEGER,
+                username         TEXT,
+                first_name       TEXT,
+                url              TEXT    NOT NULL,
+                issue_type       TEXT    NOT NULL,
+                error_message    TEXT,
+                total_items      INTEGER,
+                downloaded_items INTEGER,
+                timestamp        REAL    NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_download_issues_chat_timestamp
+            ON download_issues (chat_id, timestamp)
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_download_issues_timestamp
+            ON download_issues (timestamp)
         """)
         conn.commit()
         logger.info("database.initialized db_path=%s", db_path)
@@ -364,6 +401,94 @@ def _get_recent_messages_sync(
         conn.close()
 
 
+def _record_download_issue_sync(
+    db_path: str,
+    chat_id: int,
+    url: str,
+    issue_type: str,
+    error_message: str | None = None,
+    total_items: int | None = None,
+    downloaded_items: int | None = None,
+    user_id: int | None = None,
+    username: str | None = None,
+    first_name: str | None = None,
+) -> None:
+    now = time.time()
+    cutoff = now - MESSAGE_RETENTION_SECONDS
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            """
+            INSERT INTO download_issues (
+                chat_id, user_id, username, first_name, url,
+                issue_type, error_message, total_items, downloaded_items, timestamp
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                chat_id,
+                user_id,
+                username,
+                first_name,
+                url,
+                issue_type,
+                error_message,
+                total_items,
+                downloaded_items,
+                now,
+            ),
+        )
+        conn.execute("DELETE FROM download_issues WHERE timestamp < ?", (cutoff,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _get_recent_download_issues_sync(
+    db_path: str,
+    chat_id: int | None = None,
+    hours: float = 24.0,
+    limit: int = 10,
+) -> list[DownloadIssue]:
+    cutoff = time.time() - (hours * 3600)
+    try:
+        conn = sqlite3.connect(db_path)
+    except sqlite3.Error as exc:
+        logger.warning("database: could not connect to %s: %s", db_path, exc)
+        return []
+    try:
+        if chat_id is not None:
+            rows = conn.execute(
+                """
+                SELECT chat_id, url, issue_type, error_message, total_items, downloaded_items, timestamp, user_id, username, first_name, id
+                FROM download_issues
+                WHERE chat_id = ? AND timestamp >= ?
+                ORDER BY timestamp DESC
+                LIMIT ?
+                """,
+                (chat_id, cutoff, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT chat_id, url, issue_type, error_message, total_items, downloaded_items, timestamp, user_id, username, first_name, id
+                FROM download_issues
+                WHERE timestamp >= ?
+                ORDER BY timestamp DESC
+                LIMIT ?
+                """,
+                (cutoff, limit),
+            ).fetchall()
+        return [DownloadIssue(*row) for row in rows]
+    except sqlite3.Error as exc:
+        logger.warning(
+            "database: query failed in _get_recent_download_issues_sync: %s", exc
+        )
+        return []
+    finally:
+        conn.close()
+
+
 # ---------------------------------------------------------------------------
 # Async public API
 # ---------------------------------------------------------------------------
@@ -472,3 +597,69 @@ async def get_recent_messages(
 ) -> list[StoredMessage]:
     """Return all messages in *chat_id* from the last *minutes* minutes."""
     return await asyncio.to_thread(_get_recent_messages_sync, db_path, chat_id, minutes)
+
+
+async def record_download_issue(
+    db_path: str,
+    chat_id: int,
+    url: str,
+    issue_type: str,
+    error_message: str | None = None,
+    total_items: int | None = None,
+    downloaded_items: int | None = None,
+    user_id: int | None = None,
+    username: str | None = None,
+    first_name: str | None = None,
+) -> None:
+    """Record a failed or incomplete download issue."""
+    await asyncio.to_thread(
+        _record_download_issue_sync,
+        db_path,
+        chat_id,
+        url,
+        issue_type,
+        error_message,
+        total_items,
+        downloaded_items,
+        user_id,
+        username,
+        first_name,
+    )
+
+
+async def get_recent_download_issues(
+    db_path: str,
+    chat_id: int | None = None,
+    hours: float = 24.0,
+    limit: int = 10,
+) -> list[DownloadIssue]:
+    """Retrieve recent download issues (optionally scoped to a chat)."""
+    return await asyncio.to_thread(
+        _get_recent_download_issues_sync, db_path, chat_id, hours, limit
+    )
+
+
+def format_download_issues(issues: list[DownloadIssue]) -> str:
+    """Format a list of DownloadIssue tuples into a readable string block for prompts."""
+    if not issues:
+        return "(no recent download issues)"
+    lines: list[str] = []
+    for issue in issues:
+        sender = (
+            issue.first_name
+            or (f"@{issue.username}" if issue.username else None)
+            or "user"
+        )
+        if issue.issue_type == "incomplete_album":
+            details = f"Only downloaded {issue.downloaded_items or 0} of {issue.total_items or '?'} photos/items"
+            if issue.error_message:
+                details += f" ({issue.error_message})"
+            lines.append(
+                f"- [Incomplete Album] {issue.url} (requested by {sender}): {details}"
+            )
+        else:
+            err = issue.error_message or "Download failed"
+            lines.append(
+                f"- [Failed Download] {issue.url} (requested by {sender}): {err}"
+            )
+    return "\n".join(lines)

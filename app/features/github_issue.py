@@ -16,6 +16,7 @@ from telegram.ext import ContextTypes
 
 from app.config.settings import AppSettings
 from app.config.strings import MESSAGES
+from app.utils.database import format_download_issues, get_recent_download_issues
 
 logger = logging.getLogger(__name__)
 
@@ -313,6 +314,22 @@ async def open_github_issue(
         if not messages:
             await status_message.edit_text(MESSAGES["error_github_no_messages"])
             return
+
+        # Include recent download issues if any exist
+        try:
+            chat_id = update.effective_chat.id if update.effective_chat else 0
+            db_path = str(getattr(settings, "db_path", ""))
+            if db_path:
+                issues = await get_recent_download_issues(
+                    db_path, chat_id=chat_id, hours=24.0, limit=5
+                )
+                if issues:
+                    formatted_issues = format_download_issues(issues)
+                    messages.append(
+                        f"\n[System context: Recent download issues in this chat]\n{formatted_issues}"
+                    )
+        except Exception as exc:
+            logger.debug(f"Could not load download issues for issue summary: {exc}")
 
         # Update status
         await status_message.edit_text(MESSAGES["github_issue_summarizing"])

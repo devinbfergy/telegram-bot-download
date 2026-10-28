@@ -17,12 +17,14 @@ from app.media.detectors import (
 )
 from app.media.gallery_dl import (
     download_and_send_with_gallery_dl,
+    load_instagram_headers,
     resolve_instagram_cookiefile,
 )
 from app.media.inspection import detect_frozen_frames
 from app.media.ytdlp_profiles import PROFILES
 from app.telegram_bot.status_messenger import StatusMessenger
 from app.utils.concurrency import run_blocking
+from app.utils.database import record_download_issue
 from app.utils.filesystem import create_temp_dir, safe_cleanup
 from app.utils.validation import summarize_description, truncate_caption
 
@@ -76,6 +78,12 @@ class Downloader:
                 )
                 if instagram_cookiefile:
                     ydl_opts["cookiefile"] = instagram_cookiefile
+                    ig_headers = load_instagram_headers(self.settings)
+                    if ig_headers:
+                        ydl_opts["http_headers"] = {
+                            **ydl_opts.get("http_headers", {}),
+                            **ig_headers,
+                        }
                     logger.info(
                         "Using Instagram cookie file for yt-dlp: %s",
                         instagram_cookiefile,
@@ -95,7 +103,19 @@ class Downloader:
             await self.status_messenger.edit_message(MESSAGES["downloading"])
 
             # Run yt-dlp in a thread to avoid blocking
-            info_dict = await run_blocking(self._run_ytdlp_download, url, ydl_opts)
+            try:
+                info_dict = await run_blocking(self._run_ytdlp_download, url, ydl_opts)
+            except (ExtractionFailed, YtDlpDownloadError):
+                if not instagram_cookiefile:
+                    raise
+                # Stale/rejected login can fail worse than anonymous access
+                logger.warning(
+                    "yt-dlp failed with Instagram cookies for %s; retrying without",
+                    url,
+                )
+                ydl_opts.pop("cookiefile", None)
+                instagram_cookiefile = None
+                info_dict = await run_blocking(self._run_ytdlp_download, url, ydl_opts)
 
             if not info_dict:
                 raise ExtractionFailed("yt-dlp did not return info_dict.")
@@ -247,17 +267,54 @@ class Downloader:
                     file_size_mb=file_size_mb, limit_mb=TELEGRAM_FILE_LIMIT_MB
                 )
             )
+            await self._safe_record_issue(
+                message,
+                url,
+                "failed",
+                f"Video size ({file_size_mb:.1f}MB) exceeds Telegram limit ({TELEGRAM_FILE_LIMIT_MB}MB)",
+            )
         except FileNotFoundError as fnf:
             logger.error(f"Downloaded file not found for {url}: {fnf}")
             await self.status_messenger.edit_message(MESSAGES["error_generic"])
+            await self._safe_record_issue(
+                message, url, "failed", f"Downloaded file not found: {fnf}"
+            )
         except Exception as e:
             logger.error(
                 f"An unexpected error occurred for URL {url}: {e}", exc_info=True
             )
             if "Message to delete not found" not in str(e):
                 await self.status_messenger.edit_message(MESSAGES["error_generic"])
+            await self._safe_record_issue(message, url, "failed", str(e)[:150])
         finally:
             safe_cleanup(temp_dir)
+
+    async def _safe_record_issue(
+        self,
+        message: Message,
+        url: str,
+        issue_type: str,
+        error_message: str | None = None,
+        total_items: int | None = None,
+        downloaded_items: int | None = None,
+    ) -> None:
+        try:
+            chat_id = getattr(message, "chat_id", 0) or 0
+            from_user = getattr(message, "from_user", None)
+            await record_download_issue(
+                db_path=str(self.settings.db_path),
+                chat_id=chat_id,
+                url=url,
+                issue_type=issue_type,
+                error_message=error_message,
+                total_items=total_items,
+                downloaded_items=downloaded_items,
+                user_id=getattr(from_user, "id", None),
+                username=getattr(from_user, "username", None),
+                first_name=getattr(from_user, "first_name", None),
+            )
+        except Exception as exc:
+            logger.warning(f"Failed to record download issue: {exc}")
 
     def _run_ytdlp_download(self, url: str, ydl_opts: dict) -> dict | None:
         """Wrapper to run yt-dlp download in a sync context."""

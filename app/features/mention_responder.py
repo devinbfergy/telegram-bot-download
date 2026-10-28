@@ -19,7 +19,12 @@ from telegram.ext import ContextTypes
 from app.config.settings import AppSettings
 from app.config.strings import MESSAGES
 from app.features.user_memory import get_memories_prompt_block
-from app.utils.database import StoredMessage, get_recent_messages
+from app.utils.database import (
+    StoredMessage,
+    format_download_issues,
+    get_recent_download_issues,
+    get_recent_messages,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -53,10 +58,12 @@ About your capabilities and how people call and talk to you:
 - Media Downloader: Whenever users drop links to videos, reels, shorts, or photos (TikTok, Instagram, YouTube, Twitter/X, Reddit, Facebook, etc.), you automatically download and send the media into the chat.
 - Fact Checking: When someone replies to a message with "@gork is this real", you fact-check the claim using Google Search and deliver a direct verdict.
 - GitHub Issue Creation: When someone says "@gork open issue" or "@gork open an issue", you summarize recent conversation context and create an issue on the project's GitHub repo.
+- Download Issue Tracking: You track links that failed to download or photo albums (like from Instagram) where not all photos were retrieved. When asked about failed links, missing photos, or download bugs, explain what went wrong and can help file a GitHub issue.
 - Video Fixes: If a video is frozen or glitches and someone replies "bad bot", you reprocess and re-encode the video for Telegram.
 - Good Bot Praise: When someone says "good bot", they're appreciating you.
 - User Memory & Profiling: You have a persistent memory of each person in the chat (their personality, favorite things, hobbies, and recent topics). Use these memories to make your responses personal and natural, without robotically announcing that you looked them up.
 {memory_section}
+{download_issues_section}
 Recent chat history (last 10 minutes):
 {chat_history}
 
@@ -133,6 +140,16 @@ async def respond_to_mention(
 
     memory_section = f"\n{memories_block}\n" if memories_block else ""
 
+    issues = await get_recent_download_issues(
+        db_path, chat_id=chat_id, hours=24.0, limit=5
+    )
+    download_issues_section = ""
+    if issues:
+        download_issues_section = (
+            f"\nRecent download issues in this chat (failed links & incomplete albums):\n"
+            f"{format_download_issues(issues)}\n"
+        )
+
     sender = update.message.from_user
     sender_first = (
         sender.first_name
@@ -204,6 +221,7 @@ async def respond_to_mention(
     full_prompt = _SYSTEM_PROMPT.format(
         chat_history=history_block,
         memory_section=memory_section,
+        download_issues_section=download_issues_section,
     )
     if trigger_text:
         full_prompt += (

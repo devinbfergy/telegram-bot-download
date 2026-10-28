@@ -39,6 +39,8 @@ def setup_logging(level: str | None = None, json_mode: bool | None = None) -> No
         handler.setFormatter(logging.Formatter(_DEF_FORMAT))
     root.handlers.clear()
     root.addHandler(handler)
+    # httpx logs full request URLs, which include the Telegram bot token
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     _configured = True
 
 

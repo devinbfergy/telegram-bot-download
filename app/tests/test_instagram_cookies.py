@@ -25,7 +25,14 @@ def test_resolve_cookiefile_prefers_existing_file(tmp_path):
     settings = AppSettings(
         instagram_cookie_file=str(cookie_path), instagram_sessionid="ignored"
     )
-    assert resolve_instagram_cookiefile(settings, tmp_path) == str(cookie_path)
+    work = tmp_path / "work"
+    work.mkdir()
+    result = resolve_instagram_cookiefile(settings, work)
+    # a writable copy, never the (read-only mounted) original
+    assert result != str(cookie_path)
+    assert Path(result).read_text(encoding="utf-8") == cookie_path.read_text(
+        encoding="utf-8"
+    )
 
 
 def test_resolve_cookiefile_synthesizes_from_sessionid(tmp_path):
