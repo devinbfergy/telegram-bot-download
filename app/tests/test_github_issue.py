@@ -86,7 +86,7 @@ class TestSummarizeWithGemini:
     @patch("app.features.github_issue.aiohttp.ClientSession")
     async def test_summarize_success(self, MockClientSession, settings):
         mock_response = AsyncMock()
-        mock_response.raise_for_status = AsyncMock()
+        mock_response.raise_for_status = MagicMock()
         mock_response.json = AsyncMock(
             return_value={
                 "candidates": [

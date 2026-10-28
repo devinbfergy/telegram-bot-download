@@ -90,7 +90,9 @@ def _make_session_mock(MockClientSession, mock_response):
 @pytest.mark.asyncio
 async def test_record_user_interaction_new_and_update(temp_db: str):
     # Record new interaction
-    await record_user_interaction(temp_db, user_id=101, username="alice", first_name="Alice")
+    await record_user_interaction(
+        temp_db, user_id=101, username="alice", first_name="Alice"
+    )
     mem = await get_user_memory(temp_db, 101)
     assert mem is not None
     assert mem.user_id == 101
@@ -104,7 +106,9 @@ async def test_record_user_interaction_new_and_update(temp_db: str):
     assert mem.memory == "- Loves Python and coffee."
 
     # Interacting again should update name but preserve memory
-    await record_user_interaction(temp_db, user_id=101, username="alice_new", first_name="Alice B")
+    await record_user_interaction(
+        temp_db, user_id=101, username="alice_new", first_name="Alice B"
+    )
     mem = await get_user_memory(temp_db, 101)
     assert mem.username == "alice_new"
     assert mem.first_name == "Alice B"
@@ -127,11 +131,33 @@ async def test_get_user_memories_bulk_and_all(temp_db: str):
 
 
 @pytest.mark.asyncio
+async def test_scoped_memory_reads_never_fall_back_to_another_chat(temp_db: str):
+    await set_user_memory(temp_db, 1, "alice", "Alice", "Chat 10 secret", chat_id=10)
+
+    assert await get_user_memory(temp_db, 1, chat_id=20) is None
+    assert await get_user_memories(temp_db, [1], chat_id=20) == {}
+
+
+@pytest.mark.asyncio
 async def test_get_messages_for_last_day(temp_db: str):
     # Message within window with user_id
-    await store_message(temp_db, chat_id=10, user_id=1, username="u1", first_name="F1", message_text="Hello today")
+    await store_message(
+        temp_db,
+        chat_id=10,
+        user_id=1,
+        username="u1",
+        first_name="F1",
+        message_text="Hello today",
+    )
     # Message within window without user_id (anonymous)
-    await store_message(temp_db, chat_id=10, user_id=None, username=None, first_name=None, message_text="Anon message")
+    await store_message(
+        temp_db,
+        chat_id=10,
+        user_id=None,
+        username=None,
+        first_name=None,
+        message_text="Anon message",
+    )
 
     msgs = await get_messages_for_last_day(temp_db, hours=24.0)
     assert len(msgs) == 1
@@ -146,7 +172,9 @@ async def test_get_messages_for_last_day(temp_db: str):
 
 @pytest.mark.asyncio
 @patch("app.features.user_memory.aiohttp.ClientSession")
-async def test_call_gemini_for_memory_interactions_shape(mock_client_session, memory_settings):
+async def test_call_gemini_for_memory_interactions_shape(
+    mock_client_session, memory_settings
+):
     mock_resp = AsyncMock()
     mock_resp.raise_for_status = MagicMock()
     mock_resp.json = AsyncMock(
@@ -160,14 +188,14 @@ async def test_call_gemini_for_memory_interactions_shape(mock_client_session, me
 
 @pytest.mark.asyncio
 @patch("app.features.user_memory.aiohttp.ClientSession")
-async def test_call_gemini_for_memory_candidates_shape(mock_client_session, memory_settings):
+async def test_call_gemini_for_memory_candidates_shape(
+    mock_client_session, memory_settings
+):
     mock_resp = AsyncMock()
     mock_resp.raise_for_status = MagicMock()
     mock_resp.json = AsyncMock(
         return_value={
-            "candidates": [
-                {"content": {"parts": [{"text": "- Candidate summary."}]}}
-            ]
+            "candidates": [{"content": {"parts": [{"text": "- Candidate summary."}]}}]
         }
     )
     _make_session_mock(mock_client_session, mock_resp)
@@ -189,7 +217,14 @@ async def test_update_user_memory_from_messages(mock_call_gemini, memory_setting
     mock_call_gemini.return_value = "- Frequent poster, sarcastic humor."
 
     msgs = [
-        StoredMessage(username="bob", first_name="Bob", message_text="why is it raining", timestamp=time.time(), user_id=42, chat_id=10)
+        StoredMessage(
+            username="bob",
+            first_name="Bob",
+            message_text="why is it raining",
+            timestamp=time.time(),
+            user_id=42,
+            chat_id=10,
+        )
     ]
     res = await update_user_memory_from_messages(
         user_id=42,
@@ -213,8 +248,22 @@ async def test_update_all_user_memories(mock_call_gemini, memory_settings):
     db_path = str(memory_settings.db_path)
 
     # Store messages for two users
-    await store_message(db_path, chat_id=1, user_id=100, username="user1", first_name="U1", message_text="msg 1")
-    await store_message(db_path, chat_id=1, user_id=200, username="user2", first_name="U2", message_text="msg 2")
+    await store_message(
+        db_path,
+        chat_id=1,
+        user_id=100,
+        username="user1",
+        first_name="U1",
+        message_text="msg 1",
+    )
+    await store_message(
+        db_path,
+        chat_id=1,
+        user_id=200,
+        username="user2",
+        first_name="U2",
+        message_text="msg 2",
+    )
 
     stats = await update_all_user_memories(memory_settings, hours=24.0)
     assert stats["total_users"] == 2
@@ -249,10 +298,24 @@ async def test_get_memories_prompt_block(temp_db: str):
 async def test_mention_responder_injects_user_memory(mock_session_cls, memory_settings):
     db_path = str(memory_settings.db_path)
     # Set a memory for user 555
-    await set_user_memory(db_path, 555, "carol", "Carol", "Obsessed with quantum mechanics.")
+    await set_user_memory(
+        db_path,
+        555,
+        "carol",
+        "Carol",
+        "Obsessed with quantum mechanics.",
+        chat_id=99,
+    )
 
     # Recent message from user 555
-    await store_message(db_path, chat_id=99, user_id=555, username="carol", first_name="Carol", message_text="hey gork")
+    await store_message(
+        db_path,
+        chat_id=99,
+        user_id=555,
+        username="carol",
+        first_name="Carol",
+        message_text="hey gork",
+    )
 
     update = MagicMock(spec=Update)
     update.message = AsyncMock()
@@ -269,7 +332,9 @@ async def test_mention_responder_injects_user_memory(mock_session_cls, memory_se
 
     mock_resp = AsyncMock()
     mock_resp.raise_for_status = MagicMock()
-    mock_resp.json = AsyncMock(return_value=_make_gemini_interactions_response("Here is a fun quantum fact!"))
+    mock_resp.json = AsyncMock(
+        return_value=_make_gemini_interactions_response("Here is a fun quantum fact!")
+    )
     mock_session = _make_session_mock(mock_session_cls, mock_resp)
 
     await respond_to_mention(update, context, memory_settings)
@@ -287,7 +352,9 @@ async def test_mention_responder_injects_user_memory(mock_session_cls, memory_se
 @patch("app.features.ai_truth_check.aiohttp.ClientSession")
 async def test_ai_truth_check_injects_user_memory(mock_session_cls, memory_settings):
     db_path = str(memory_settings.db_path)
-    await set_user_memory(db_path, 777, "dave", "Dave", "Professional skeptic.")
+    await set_user_memory(
+        db_path, 777, "dave", "Dave", "Professional skeptic.", chat_id=88
+    )
 
     update = MagicMock(spec=Update)
     update.message = AsyncMock()
@@ -306,7 +373,9 @@ async def test_ai_truth_check_injects_user_memory(mock_session_cls, memory_setti
 
     mock_resp = AsyncMock()
     mock_resp.raise_for_status = MagicMock()
-    mock_resp.json = AsyncMock(return_value=_make_gemini_interactions_response("No, birds are real animals."))
+    mock_resp.json = AsyncMock(
+        return_value=_make_gemini_interactions_response("No, birds are real animals.")
+    )
     mock_session = _make_session_mock(mock_session_cls, mock_resp)
 
     await ai_truth_check(update, context, memory_settings)
@@ -376,7 +445,9 @@ async def test_log_message_to_db_records_caption(memory_settings):
     assert user_record.username == "photographer"
 
     msgs = await get_messages_for_last_day(db_path, hours=1.0)
-    assert any(m.message_text == "Photo caption here" and m.user_id == 999 for m in msgs)
+    assert any(
+        m.message_text == "Photo caption here" and m.user_id == 999 for m in msgs
+    )
 
 
 def test_register_jobs_with_job_queue():
@@ -426,12 +497,38 @@ async def test_show_user_memory_no_memory(memory_settings):
 
 
 @pytest.mark.asyncio
+async def test_show_user_memory_does_not_display_another_chats_memory(memory_settings):
+    db_path = str(memory_settings.db_path)
+    await set_user_memory(
+        db_path, 4321, "alice", "Alice", "Other chat secret", chat_id=10
+    )
+
+    update = MagicMock(spec=Update)
+    update.message = AsyncMock()
+    update.message.reply_to_message = None
+    update.message.from_user = MagicMock(id=4321, first_name="Alice", username="alice")
+    update.effective_chat = MagicMock(id=20)
+
+    await show_user_memory(
+        update, MagicMock(spec=ContextTypes.DEFAULT_TYPE), memory_settings
+    )
+
+    reply = update.message.reply_text.call_args.args[0]
+    assert "don't have any memories" in reply
+    assert "Other chat secret" not in reply
+
+
+@pytest.mark.asyncio
 @patch("app.features.user_memory.call_gemini_for_memory", new_callable=AsyncMock)
 async def test_show_user_memory_with_gemini(mock_call_gemini, memory_settings):
     db_path = str(memory_settings.db_path)
-    await set_user_memory(db_path, 4321, "alice", "Alice", "- Loves tea and puzzles.")
+    await set_user_memory(
+        db_path, 4321, "alice", "Alice", "- Loves tea and puzzles.", chat_id=0
+    )
 
-    mock_call_gemini.return_value = "Here is Alice. Sarcastic tea lover:\n- Solves puzzles daily."
+    mock_call_gemini.return_value = (
+        "Here is Alice. Sarcastic tea lover:\n- Solves puzzles daily."
+    )
 
     update = MagicMock(spec=Update)
     update.message = AsyncMock()
@@ -440,6 +537,8 @@ async def test_show_user_memory_with_gemini(mock_call_gemini, memory_settings):
     update.message.from_user.id = 4321
     update.message.from_user.first_name = "Alice"
     update.message.from_user.username = "alice"
+    update.effective_chat = MagicMock()
+    update.effective_chat.id = 0
 
     context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
     await show_user_memory(update, context, memory_settings)
@@ -454,7 +553,9 @@ async def test_show_user_memory_with_gemini(mock_call_gemini, memory_settings):
 @patch("app.features.user_memory.call_gemini_for_memory", new_callable=AsyncMock)
 async def test_show_user_memory_replied_user(mock_call_gemini, memory_settings):
     db_path = str(memory_settings.db_path)
-    await set_user_memory(db_path, 9999, "target", "TargetUser", "- Loves robots.")
+    await set_user_memory(
+        db_path, 9999, "target", "TargetUser", "- Loves robots.", chat_id=0
+    )
 
     mock_call_gemini.return_value = "TargetUser is an engineer."
 
@@ -470,6 +571,8 @@ async def test_show_user_memory_replied_user(mock_call_gemini, memory_settings):
     replied.from_user.first_name = "TargetUser"
     replied.from_user.username = "target"
     update.message.reply_to_message = replied
+    update.effective_chat = MagicMock()
+    update.effective_chat.id = 0
 
     context = MagicMock(spec=ContextTypes.DEFAULT_TYPE)
     await show_user_memory(update, context, memory_settings)

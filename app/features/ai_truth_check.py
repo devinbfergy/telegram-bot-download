@@ -120,12 +120,12 @@ async def ai_truth_check(
     }
 
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                GEMINI_API_URL, headers=headers, json=payload
-            ) as response:
-                response.raise_for_status()
-                data = await response.json()
+        async with (
+            aiohttp.ClientSession() as session,
+            session.post(GEMINI_API_URL, headers=headers, json=payload) as response,
+        ):
+            response.raise_for_status()
+            data = await response.json()
 
         try:
             model_output = next(
@@ -144,14 +144,14 @@ async def ai_truth_check(
             reply_text, parse_mode=parse_mode, disable_notification=True
         )
 
-    except aiohttp.ClientError as e:
-        logger.error("ai_truth_check: Gemini request failed: %s", e, exc_info=True)
+    except aiohttp.ClientError:
+        logger.exception("ai_truth_check: Gemini request failed")
         await update.message.reply_text(
             MESSAGES["error_ai_api_request_failed"],
             disable_notification=True,
         )
-    except Exception as e:
-        logger.error("ai_truth_check: unexpected error: %s", e, exc_info=True)
+    except Exception:
+        logger.exception("ai_truth_check: unexpected error")
         await update.message.reply_text(
             MESSAGES["error_generic"], disable_notification=True
         )

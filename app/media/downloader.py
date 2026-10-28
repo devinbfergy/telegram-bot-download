@@ -67,6 +67,7 @@ class Downloader:
                     profile_name = "default"
 
             ydl_opts = PROFILES[profile_name]()
+            ydl_opts["socket_timeout"] = self.settings.timeouts["yt_dlp"]
 
             logger.info(f"Using '{profile_name}' profile for: {url}")
 
@@ -148,22 +149,21 @@ class Downloader:
                     found_files = list(temp_dir.glob("*.*"))  # any extension
 
                 if found_files:
-                    video_path = sorted(
-                        found_files, key=lambda p: p.stat().st_size, reverse=True
-                    )[0]
+                    video_path = max(found_files, key=lambda p: p.stat().st_size)
                     logger.debug(f"Found video file by searching: {video_path}")
                 else:
                     raise FileNotFoundError(f"Downloaded file not found in {temp_dir}")
 
             # --- Post-download checks ---
 
-            # Check for frozen frames
-            if detect_frozen_frames(video_path):
+            # Check for frozen frames off the event loop.
+            if await run_blocking(detect_frozen_frames, video_path):
                 logger.warning(f"Frozen frame video detected: {video_path}")
                 await self.status_messenger.edit_message(MESSAGES["frozen_frame_retry"])
                 safe_cleanup(video_path)
 
                 fallback_opts = PROFILES["fallback"]()
+                fallback_opts["socket_timeout"] = self.settings.timeouts["yt_dlp"]
                 fallback_outtmpl_str = str(
                     temp_dir / os.path.basename(fallback_opts["outtmpl"])
                 )
@@ -202,7 +202,7 @@ class Downloader:
                             "Fallback download also failed to produce a file."
                         )
 
-                if detect_frozen_frames(video_path):
+                if await run_blocking(detect_frozen_frames, video_path):
                     logger.warning(
                         f"yt-dlp fallback produced a frozen video for {url}. Trying gallery-dl as fallback."
                     )
@@ -262,7 +262,7 @@ class Downloader:
             file_size_mb = (
                 video_path.stat().st_size / (1024 * 1024) if video_path else 0
             )
-            await self.status_messenger.edit_message(
+            await self.status_messenger.show_terminal_error(
                 MESSAGES["video_too_large"].format(
                     file_size_mb=file_size_mb, limit_mb=TELEGRAM_FILE_LIMIT_MB
                 )
@@ -275,16 +275,16 @@ class Downloader:
             )
         except FileNotFoundError as fnf:
             logger.error(f"Downloaded file not found for {url}: {fnf}")
-            await self.status_messenger.edit_message(MESSAGES["error_generic"])
+            await self.status_messenger.show_terminal_error(MESSAGES["error_generic"])
             await self._safe_record_issue(
                 message, url, "failed", f"Downloaded file not found: {fnf}"
             )
         except Exception as e:
-            logger.error(
-                f"An unexpected error occurred for URL {url}: {e}", exc_info=True
-            )
+            logger.exception("An unexpected error occurred for URL %s", url)
             if "Message to delete not found" not in str(e):
-                await self.status_messenger.edit_message(MESSAGES["error_generic"])
+                await self.status_messenger.show_terminal_error(
+                    MESSAGES["error_generic"]
+                )
             await self._safe_record_issue(message, url, "failed", str(e)[:150])
         finally:
             safe_cleanup(temp_dir)
@@ -313,7 +313,7 @@ class Downloader:
                 username=getattr(from_user, "username", None),
                 first_name=getattr(from_user, "first_name", None),
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.warning(f"Failed to record download issue: {exc}")
 
     def _run_ytdlp_download(self, url: str, ydl_opts: dict) -> dict | None:
@@ -324,7 +324,7 @@ class Downloader:
                 from yt_dlp.networking.impersonate import ImpersonateTarget
 
                 opts["impersonate"] = ImpersonateTarget.from_str(opts["impersonate"])
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 logger.warning(
                     f"Could not convert impersonate string {opts['impersonate']!r} to ImpersonateTarget: {e}"
                 )

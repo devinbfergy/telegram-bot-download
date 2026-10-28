@@ -75,10 +75,12 @@ async def reprocess_bad_bot(
         await downloader.download_and_send_media(
             url, target_message, profile_name="telegram"
         )
-    except Exception as e:
-        logger.error(f"reprocess_bad_bot: Error reprocessing {url}: {e}", exc_info=True)
-        await status_messenger.edit_message(MESSAGES["error_generic"])
+    except Exception:
+        logger.exception("reprocess_bad_bot: Error reprocessing %s", url)
+        await status_messenger.show_terminal_error(MESSAGES["error_generic"])
     finally:
-        # Ensure the status message is deleted
-        if status_messenger.has_active_message():
+        if (
+            status_messenger.has_active_message()
+            and not status_messenger.has_terminal_error()
+        ):
             await status_messenger.delete_status_message()

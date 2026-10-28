@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 try:
     import cv2  # type: ignore
-except Exception:  # pragma: no cover
+except (ImportError, OSError):  # pragma: no cover
     cv2 = None  # type: ignore
 
 if TYPE_CHECKING:

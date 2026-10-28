@@ -1,9 +1,32 @@
+import subprocess
 from pathlib import Path
+from unittest.mock import patch
 
 import cv2
 import numpy as np
 
 from app.media.inspection import detect_frozen_frames
+from app.media.slideshow import create_slideshow_from_media
+
+
+@patch("app.media.slideshow.subprocess.run")
+def test_slideshow_uses_configured_ffmpeg_timeout(mock_run, tmp_path: Path):
+    image = tmp_path / "image.jpg"
+    image.write_bytes(b"jpeg")
+    audio = tmp_path / "audio.mp3"
+    audio.write_bytes(b"audio")
+    output = tmp_path / "output.mp4"
+
+    def fake_run(command, **kwargs):
+        if command[0] == "ffprobe":
+            return subprocess.CompletedProcess(command, 0, stdout="10.0")
+        Path(command[-1]).touch()
+        return subprocess.CompletedProcess(command, 0)
+
+    mock_run.side_effect = fake_run
+
+    assert create_slideshow_from_media([image], audio, output, timeout=73) is True
+    assert all(call.kwargs["timeout"] == 73 for call in mock_run.call_args_list)
 
 
 def test_detect_frozen_frames_placeholder(tmp_path: Path):

@@ -121,7 +121,7 @@ def test_all_profiles_can_instantiate_youtubedl():
     """Test that all profiles can be instantiated by YoutubeDL without errors."""
     from yt_dlp import YoutubeDL
 
-    for profile_name, profile_func in PROFILES.items():
+    for profile_func in PROFILES.values():
         profile = profile_func()
         with YoutubeDL(profile) as ydl:
             assert ydl is not None

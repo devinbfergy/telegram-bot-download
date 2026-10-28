@@ -6,12 +6,12 @@ import pytest
 from app.config.settings import AppSettings
 from app.media.gallery_dl import (
     _inspect_gallery_dl_metadata,
+    _run_gallery_dl_subprocess,
     download_and_send_with_gallery_dl,
 )
 from app.telegram_bot.handlers import handle_download_issues
 from app.telegram_bot.status_messenger import StatusMessenger
 from app.utils.database import (
-    DownloadIssue,
     format_download_issues,
     get_recent_download_issues,
     init_db,
@@ -117,6 +117,13 @@ def test_inspect_gallery_dl_metadata(tmp_path: Path):
     assert expected_count == 5
     assert file_num_map["1.jpg"] == 1
     assert file_num_map["2.jpg"] == 2
+
+
+@patch("app.media.gallery_dl.subprocess.run")
+def test_gallery_dl_subprocess_uses_configured_timeout(mock_run, tmp_path: Path):
+    _run_gallery_dl_subprocess("https://example.com/media", tmp_path, timeout=47)
+
+    assert mock_run.call_args.kwargs["timeout"] == 47
 
 
 @pytest.mark.asyncio

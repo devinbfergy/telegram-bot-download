@@ -18,7 +18,9 @@ from typing import NamedTuple
 
 logger = logging.getLogger(__name__)
 
-MESSAGE_RETENTION_SECONDS = 7 * 24 * 60 * 60  # 7 days (guarantees last day of messages are kept)
+MESSAGE_RETENTION_SECONDS = (
+    7 * 24 * 60 * 60
+)  # 7 days (guarantees last day of messages are kept)
 DEFAULT_CONTEXT_MINUTES = 10
 
 
@@ -280,7 +282,6 @@ def _get_user_memories_sync(
         placeholders = ",".join("?" for _ in user_ids)
         result: dict[int, UserMemory] = {}
         if chat_id is not None:
-            # First fetch chat-specific memories
             params = list(user_ids) + [chat_id]
             rows = conn.execute(
                 f"""
@@ -292,23 +293,6 @@ def _get_user_memories_sync(
             ).fetchall()
             for row in rows:
                 result[row[0]] = UserMemory(*row)
-
-            # For any users missing a chat-specific memory, fall back to their most recent memory
-            missing_ids = [uid for uid in user_ids if uid not in result]
-            if missing_ids:
-                m_placeholders = ",".join("?" for _ in missing_ids)
-                fallback_rows = conn.execute(
-                    f"""
-                    SELECT user_id, username, first_name, memory, updated_at, chat_id
-                    FROM user_memories
-                    WHERE user_id IN ({m_placeholders})
-                    ORDER BY updated_at DESC
-                    """,
-                    missing_ids,
-                ).fetchall()
-                for row in fallback_rows:
-                    if row[0] not in result:
-                        result[row[0]] = UserMemory(*row)
         else:
             rows = conn.execute(
                 f"""
@@ -373,7 +357,9 @@ def _get_messages_for_last_day_sync(
         ).fetchall()
         return [StoredMessage(*row) for row in rows]
     except sqlite3.Error as exc:
-        logger.warning("database: query failed in _get_messages_for_last_day_sync: %s", exc)
+        logger.warning(
+            "database: query failed in _get_messages_for_last_day_sync: %s", exc
+        )
         return []
     finally:
         conn.close()

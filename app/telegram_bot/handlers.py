@@ -14,6 +14,7 @@ from app.features.user_memory import show_user_memory
 from app.media.detectors import is_image_url, is_tiktok_photo_url, is_video_url
 from app.media.downloader import Downloader
 from app.telegram_bot.status_messenger import StatusMessenger
+from app.utils.concurrency import run_blocking
 from app.utils.database import (
     get_recent_download_issues,
     record_user_interaction,
@@ -39,7 +40,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         logger.info("No message or text, returning")
         return
 
-    logger.info(f"Message text: {update.message.text}")
     url = extract_url(update.message.text)
     logger.info(f"Extracted URL: {url}")
 
@@ -61,7 +61,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         if is_tiktok_photo_url(url):
             await status_messenger.send_message(MESSAGES["tiktok_photo_alert"])
         elif (
-            is_video_url(url)
+            await run_blocking(is_video_url, url)
             or is_image_url(url)
             or "snapchat" in url
             or "facebook" in url
@@ -75,16 +75,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
         await downloader.download_and_send_media(url, update.message)
 
-    except Exception as e:
+    except Exception:
         # The downloader class should handle its own errors and status messages.
         # This is a final fallback.
-        logger.error(
-            f"Unhandled error in handle_message for URL {url}: {e}", exc_info=True
-        )
-        await status_messenger.send_message(MESSAGES["error_generic"])
+        logger.exception("Unhandled error in handle_message for URL %s", url)
+        await status_messenger.show_terminal_error(MESSAGES["error_generic"])
     finally:
-        # Ensure the status message is deleted unless an error occurred that we want to persist
-        if status_messenger.has_active_message():
+        if (
+            status_messenger.has_active_message()
+            and not status_messenger.has_terminal_error()
+        ):
             await status_messenger.delete_status_message()
 
 
@@ -108,7 +108,6 @@ async def handle_bad_bot_reply(
         logger.info("handle_bad_bot_reply: No reply, returning")
         return
 
-    logger.info(f"handle_bad_bot_reply: Message text: {update.message.text}")
     if "bad bot" not in update.message.text.lower():
         logger.info("handle_bad_bot_reply: Not a 'bad bot' message, returning")
         return
@@ -130,7 +129,6 @@ async def handle_good_bot_reply(
         logger.info("handle_good_bot_reply: No message or text, returning")
         return
 
-    logger.info(f"handle_good_bot_reply: Message text: {update.message.text}")
     if "good bot" not in update.message.text.lower():
         logger.info("handle_good_bot_reply: Not a 'good bot' message, returning")
         return
@@ -153,7 +151,6 @@ async def handle_gork_is_this_real(
         logger.info("handle_gork_is_this_real: No message or no reply, returning")
         return
 
-    logger.info(f"handle_gork_is_this_real: Message text: {update.message.text}")
     if "@gork is this real" not in update.message.text.lower():
         logger.info(
             "handle_gork_is_this_real: Not a '@gork is this real' message, returning"
@@ -179,7 +176,6 @@ async def handle_gork_open_issue(
         return
 
     message_text = update.message.text.lower()
-    logger.info(f"handle_gork_open_issue: Message text: {update.message.text}")
 
     if not (
         "@gork" in message_text and "open" in message_text and "issue" in message_text

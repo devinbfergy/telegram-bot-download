@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any
 
 try:
     from yt_dlp.networking.impersonate import ImpersonateTarget
@@ -25,7 +25,7 @@ _BASE_PROFILE = {
 }
 
 
-def get_default_profile() -> Dict[str, Any]:
+def get_default_profile() -> dict[str, Any]:
     """
     Standard profile for general video downloads.
     - Re-encodes to H.264/AAC for broad compatibility.
@@ -67,7 +67,7 @@ def get_default_profile() -> Dict[str, Any]:
     return profile
 
 
-def get_shorts_profile() -> Dict[str, Any]:
+def get_shorts_profile() -> dict[str, Any]:
     """
     Optimized profile for YouTube Shorts and similar short-form videos.
     - Prefers higher quality up to 1080p (Shorts are typically vertical 9:16)
@@ -120,7 +120,7 @@ def get_shorts_profile() -> Dict[str, Any]:
     return profile
 
 
-def get_fallback_profile() -> Dict[str, Any]:
+def get_fallback_profile() -> dict[str, Any]:
     """
     A simple fallback profile for when the default fails, especially with frozen frames.
     - Re-encodes with libx264 and yuv420p to repair corrupt or incompatible codecs.
@@ -161,7 +161,7 @@ def get_fallback_profile() -> Dict[str, Any]:
     return profile
 
 
-def get_instagram_profile() -> Dict[str, Any]:
+def get_instagram_profile() -> dict[str, Any]:
     """
     Optimized profile for Instagram reels and posts.
     - Prefers pre-merged formats to avoid ffmpeg merge failures
@@ -212,7 +212,7 @@ def get_instagram_profile() -> Dict[str, Any]:
     return profile
 
 
-def get_tiktok_profile() -> Dict[str, Any]:
+def get_tiktok_profile() -> dict[str, Any]:
     """
     Optimized profile for TikTok videos, including short /t/ links.
     - Impersonates Chrome (curl-cffi) because TikTok blocks generic clients
@@ -263,7 +263,7 @@ def get_tiktok_profile() -> Dict[str, Any]:
     return profile
 
 
-def get_telegram_optimization_profile() -> Dict[str, Any]:
+def get_telegram_optimization_profile() -> dict[str, Any]:
     """
     Profile for the 'bad bot' reprocessing feature.
     - Rescales video to a maximum width of 720p.

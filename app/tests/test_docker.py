@@ -19,9 +19,7 @@ def docker_available() -> bool:
     """Check if Docker is available."""
     if not TESTCONTAINERS_AVAILABLE:
         return False
-    if not Path("/var/run/docker.sock").exists():
-        return False
-    return True
+    return Path("/var/run/docker.sock").exists()
 
 
 @pytest.fixture(scope="module")

@@ -58,6 +58,10 @@ async def test_downloader_success_case(
     status_messenger.edit_message.assert_any_call(MESSAGES["uploading"])
     message.reply_video.assert_called_once()
     status_messenger.delete_status_message.assert_called_once()
+    assert (
+        mock_to_thread.call_args.args[1]["socket_timeout"]
+        == settings.timeouts["yt_dlp"]
+    )
 
 
 @pytest.mark.asyncio
@@ -88,11 +92,19 @@ async def test_downloader_frozen_frame_fallback(
     mock_run_ytdlp.return_value = {"id": "frozen_id", "ext": "mp4"}
 
     # Act
-    await downloader.download_and_send_media(url, message)
+    dispatched = []
+
+    async def fake_run_blocking(function, *args):
+        dispatched.append(function)
+        return function(*args)
+
+    with patch("app.media.downloader.run_blocking", side_effect=fake_run_blocking):
+        await downloader.download_and_send_media(url, message)
 
     # Assert
     from app.config.strings import MESSAGES
 
+    assert dispatched.count(mock_detect_frozen) == 2
     status_messenger.edit_message.assert_any_call(MESSAGES["downloading"])
     status_messenger.edit_message.assert_any_call(MESSAGES["frozen_frame_retry"])
     status_messenger.edit_message.assert_any_call(MESSAGES["uploading"])

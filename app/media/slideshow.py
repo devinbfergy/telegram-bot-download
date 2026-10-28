@@ -1,13 +1,15 @@
 import logging
 import subprocess
 from pathlib import Path
-from typing import List
 
 logger = logging.getLogger(__name__)
 
 
 def create_slideshow_from_media(
-    image_paths: List[Path], audio_path: Path, output_path: Path
+    image_paths: list[Path],
+    audio_path: Path,
+    output_path: Path,
+    timeout: int,
 ) -> bool:
     """
     Creates an MP4 slideshow video from a list of images and an audio file.
@@ -48,7 +50,7 @@ def create_slideshow_from_media(
                 str(audio_path),
             ]
             result = subprocess.run(
-                probe_cmd, capture_output=True, text=True, timeout=15, check=True
+                probe_cmd, capture_output=True, text=True, timeout=timeout, check=True
             )
             audio_duration = float(result.stdout.strip())
         except (subprocess.CalledProcessError, ValueError, FileNotFoundError):
@@ -76,7 +78,7 @@ def create_slideshow_from_media(
                     str(img_path),
                     str(target_path),
                 ]
-                subprocess.run(convert_cmd, check=True, timeout=30)
+                subprocess.run(convert_cmd, check=True, timeout=timeout)
             normalized_image_paths.append(target_path)
 
         # 3. Create video from frames
@@ -99,7 +101,7 @@ def create_slideshow_from_media(
             "+faststart",
             str(temp_video_path),
         ]
-        subprocess.run(video_cmd, check=True, timeout=300)
+        subprocess.run(video_cmd, check=True, timeout=timeout)
 
         # 4. Mux video and audio
         mux_cmd = [
@@ -122,7 +124,7 @@ def create_slideshow_from_media(
             "+faststart",
             str(output_path),
         ]
-        subprocess.run(mux_cmd, check=True, timeout=300)
+        subprocess.run(mux_cmd, check=True, timeout=timeout)
 
         return output_path.exists()
 
@@ -132,6 +134,6 @@ def create_slideshow_from_media(
     except subprocess.TimeoutExpired as te:
         logger.error(f"FFmpeg command timed out: {te}")
         return False
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.error(f"An unexpected error occurred during slideshow creation: {e}")
         return False

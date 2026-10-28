@@ -95,7 +95,7 @@ def is_video_url(url: str) -> bool:
             return False
         except DownloadError:
             return False
-        except Exception:
+        except Exception:  # noqa: BLE001
             # Broad exception to catch any other yt-dlp issues
             return False
 

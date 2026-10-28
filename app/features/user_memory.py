@@ -141,9 +141,7 @@ async def update_user_memory_from_messages(
     existing_record = await get_user_memory(db_path, user_id, chat_id=chat_id)
 
     if existing_record and existing_record.memory.strip():
-        existing_memory_section = (
-            f"Current existing memory for this user in this chat:\n{existing_record.memory.strip()}"
-        )
+        existing_memory_section = f"Current existing memory for this user in this chat:\n{existing_record.memory.strip()}"
     else:
         existing_memory_section = (
             "This is a new user with no previous memory recorded in this chat."
@@ -319,10 +317,6 @@ async def show_user_memory(
     db_path = str(settings.db_path)
     chat_id = update.effective_chat.id if update.effective_chat else 0
     mem = await get_user_memory(db_path, target_user.id, chat_id=chat_id)
-    if not mem or not mem.memory or not mem.memory.strip():
-        # Fall back to any memory for this user across chats if not found in current chat
-        mem = await get_user_memory(db_path, target_user.id)
-
     if not mem or not mem.memory or not mem.memory.strip():
         await update.message.reply_text(
             f"I don't have any memories stored for {name} yet. Chat a bit more and I'll start taking notes.",

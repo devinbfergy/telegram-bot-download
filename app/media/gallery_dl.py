@@ -91,7 +91,7 @@ async def _safe_record_issue(
             username=getattr(from_user, "username", None),
             first_name=getattr(from_user, "first_name", None),
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.warning(f"Failed to record download issue: {exc}")
 
 
@@ -147,6 +147,7 @@ async def download_and_send_with_gallery_dl(
                 temp_dir,
                 cookie_file or "",
                 user_agent,
+                settings.timeouts["gallery_dl"],
             )
         except subprocess.CalledProcessError:
             if not cookie_file:
@@ -154,11 +155,18 @@ async def download_and_send_with_gallery_dl(
             logger.warning(
                 "gallery-dl failed with cookies for %s; retrying without", url
             )
-            await run_blocking(_run_gallery_dl_subprocess, url, temp_dir, "")
+            await run_blocking(
+                _run_gallery_dl_subprocess,
+                url,
+                temp_dir,
+                "",
+                "",
+                settings.timeouts["gallery_dl"],
+            )
 
         all_files = list(temp_dir.rglob("*.*"))
         if not all_files:
-            await status_messenger.edit_message(MESSAGES["gallery_dl_no_media"])
+            await status_messenger.show_terminal_error(MESSAGES["gallery_dl_no_media"])
             await _safe_record_issue(
                 settings,
                 message,
@@ -191,6 +199,7 @@ async def download_and_send_with_gallery_dl(
                 images[: settings.slideshow_max_images],
                 audios[0],
                 slideshow_path,
+                settings.timeouts["ffmpeg"],
             )
             if (
                 success
@@ -219,7 +228,7 @@ async def download_and_send_with_gallery_dl(
         media_items = sorted(images + videos, key=_get_item_order)
 
         if not media_items:
-            await status_messenger.edit_message(
+            await status_messenger.show_terminal_error(
                 MESSAGES["gallery_dl_no_suitable_media"]
             )
             await _safe_record_issue(
@@ -234,16 +243,18 @@ async def download_and_send_with_gallery_dl(
         # Filter out videos exceeding size limit
         valid_media: list[Path] = []
         for item in media_items:
-            if item.suffix.lower() in settings.media_video_extensions:
-                if item.stat().st_size > settings.telegram_max_video_size:
-                    logger.warning(
-                        f"Video file {item} exceeds size limit ({item.stat().st_size} bytes), skipping"
-                    )
-                    continue
+            if (
+                item.suffix.lower() in settings.media_video_extensions
+                and item.stat().st_size > settings.telegram_max_video_size
+            ):
+                logger.warning(
+                    f"Video file {item} exceeds size limit ({item.stat().st_size} bytes), skipping"
+                )
+                continue
             valid_media.append(item)
 
         if not valid_media:
-            await status_messenger.edit_message(
+            await status_messenger.show_terminal_error(
                 MESSAGES["gallery_dl_no_suitable_media"]
             )
             await _safe_record_issue(
@@ -345,10 +356,7 @@ async def download_and_send_with_gallery_dl(
                     )
                 finally:
                     for fh in opened_files:
-                        try:
-                            fh.close()
-                        except Exception:
-                            pass
+                        fh.close()
             else:
                 # Single item leftover in the last chunk
                 single = chunk[0]
@@ -394,7 +402,7 @@ async def download_and_send_with_gallery_dl(
 
     except FileNotFoundError as fnf:
         logger.error(f"gallery-dl binary not found: {fnf}")
-        await status_messenger.edit_message(
+        await status_messenger.show_terminal_error(
             MESSAGES["gallery_dl_error"].format(error="gallery-dl not installed")
         )
         await _safe_record_issue(
@@ -406,15 +414,17 @@ async def download_and_send_with_gallery_dl(
         )
         return False
     except subprocess.CalledProcessError as cpe:
-        logger.error(f"gallery-dl subprocess failed for {url}: {cpe}", exc_info=True)
+        logger.exception("gallery-dl subprocess failed for %s", url)
         err_text = cpe.stderr.decode("utf-8", errors="ignore") if cpe.stderr else ""
         if is_instagram_url(url) and (
             "login" in err_text.lower() or "401" in err_text or "403" in err_text
         ):
-            await status_messenger.edit_message(MESSAGES["instagram_login_required"])
+            await status_messenger.show_terminal_error(
+                MESSAGES["instagram_login_required"]
+            )
             reason = "Instagram login required / cookies expired"
         else:
-            await status_messenger.edit_message(
+            await status_messenger.show_terminal_error(
                 MESSAGES["gallery_dl_error"].format(error="Download failed")
             )
             reason = (
@@ -430,7 +440,7 @@ async def download_and_send_with_gallery_dl(
         return False
     except subprocess.TimeoutExpired as te:
         logger.error(f"gallery-dl timed out for {url}: {te}")
-        await status_messenger.edit_message(
+        await status_messenger.show_terminal_error(
             MESSAGES["gallery_dl_error"].format(error="Download timed out")
         )
         await _safe_record_issue(
@@ -438,12 +448,12 @@ async def download_and_send_with_gallery_dl(
             message,
             url,
             issue_type="failed",
-            error_message="Download timed out (300s)",
+            error_message=f"Download timed out ({settings.timeouts['gallery_dl']}s)",
         )
         return False
     except Exception as e:
-        logger.error(f"gallery-dl failed for {url}: {e}", exc_info=True)
-        await status_messenger.edit_message(
+        logger.exception("gallery-dl failed for %s", url)
+        await status_messenger.show_terminal_error(
             MESSAGES["gallery_dl_error"].format(error=e)
         )
         await _safe_record_issue(
@@ -459,7 +469,11 @@ async def download_and_send_with_gallery_dl(
 
 
 def _run_gallery_dl_subprocess(
-    url: str, temp_dir: Path, cookie_file: str = "", user_agent: str = ""
+    url: str,
+    temp_dir: Path,
+    cookie_file: str = "",
+    user_agent: str = "",
+    timeout: int = 600,
 ) -> None:
     """Helper to run gallery-dl in a subprocess with metadata extraction."""
     try:
@@ -477,13 +491,13 @@ def _run_gallery_dl_subprocess(
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
             check=True,
-            timeout=300,
+            timeout=timeout,
         )
     except FileNotFoundError:
         raise RuntimeError("gallery-dl is not installed or not in PATH.")
     except subprocess.CalledProcessError as e:
         error_output = e.stderr.decode("utf-8", errors="ignore")
-        logger.error(f"gallery-dl subprocess failed with output:\n{error_output}")
+        logger.exception(f"gallery-dl subprocess failed with output:\n{error_output}")
         raise
 
 

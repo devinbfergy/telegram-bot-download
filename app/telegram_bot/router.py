@@ -214,7 +214,9 @@ async def check_chat_allowlist(
     settings = getattr(context.application, "settings", {}).get("app_settings")
     if settings and not is_chat_allowed(update, settings):
         chat_id = (
-            update.effective_chat.id if getattr(update, "effective_chat", None) else "unknown"
+            update.effective_chat.id
+            if getattr(update, "effective_chat", None)
+            else "unknown"
         )
         logger.debug(
             "check_chat_allowlist: dropping update from non-allowed chat %s", chat_id

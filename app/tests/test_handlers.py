@@ -5,18 +5,33 @@ from telegram import Update
 from telegram.ext import Application, ContextTypes
 
 from app.config.settings import AppSettings
+from app.config.strings import MESSAGES
 from app.telegram_bot.handlers import (
     handle_bad_bot_reply,
     handle_gork_is_this_real,
     handle_message,
     start,
 )
+from app.telegram_bot.status_messenger import StatusMessenger
 
 
 @pytest.fixture
 def settings():
     """Provide a default AppSettings instance for tests."""
     return AppSettings()
+
+
+@pytest.mark.asyncio
+async def test_terminal_status_is_distinct_from_transient_progress(settings):
+    bot = AsyncMock()
+    bot.send_message.return_value = AsyncMock(message_id=1)
+    status = StatusMessenger(bot, 123, settings)
+
+    await status.show_terminal_error(MESSAGES["error_generic"])
+
+    assert status.has_active_message() is True
+    assert status.has_terminal_error() is True
+    bot.send_message.return_value.delete.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -42,8 +57,9 @@ async def test_start_handler():
 
 
 @pytest.mark.asyncio
+@patch("app.telegram_bot.handlers.run_blocking", new_callable=AsyncMock)
 @patch("app.telegram_bot.handlers.Downloader")
-async def test_handle_message_with_video_url(MockDownloader):
+async def test_handle_message_with_video_url(MockDownloader, mock_run_blocking):
     """
     Test that handle_message correctly processes a video URL.
     """
@@ -63,9 +79,12 @@ async def test_handle_message_with_video_url(MockDownloader):
 
     mock_downloader_instance = MockDownloader.return_value
     mock_downloader_instance.download_and_send_media = AsyncMock()
+    mock_run_blocking.return_value = True
 
     with (
-        patch("app.telegram_bot.handlers.is_video_url", return_value=True),
+        patch(
+            "app.telegram_bot.handlers.is_video_url", return_value=True
+        ) as mock_is_video,
         patch("app.telegram_bot.handlers.is_image_url", return_value=False),
         patch("app.telegram_bot.handlers.is_tiktok_photo_url", return_value=False),
     ):
@@ -74,6 +93,8 @@ async def test_handle_message_with_video_url(MockDownloader):
 
     # Assert
     MockDownloader.assert_called_once()
+    mock_run_blocking.assert_awaited_once()
+    assert mock_run_blocking.await_args.args[0] is mock_is_video
     mock_downloader_instance.download_and_send_media.assert_called_once_with(
         "https://www.youtube.com/watch?v=dQw4w9WgXcQ", update.message
     )

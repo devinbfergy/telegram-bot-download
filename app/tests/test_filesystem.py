@@ -26,11 +26,10 @@ def test_temp_workspace_cleans_up():
 
 def test_temp_workspace_multiple_instances():
     # Multiple workspaces should have different paths
-    with temp_workspace("first_") as dir1:
-        with temp_workspace("second_") as dir2:
-            assert dir1 != dir2
-            assert dir1.exists()
-            assert dir2.exists()
+    with temp_workspace("first_") as dir1, temp_workspace("second_") as dir2:
+        assert dir1 != dir2
+        assert dir1.exists()
+        assert dir2.exists()
 
 
 def test_temp_workspace_with_nested_files():

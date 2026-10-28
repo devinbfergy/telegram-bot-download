@@ -128,8 +128,8 @@ async def fetch_recent_messages(
                 )
                 messages.append(f"@{sender} (issue request): {combined_content}")
 
-    except Exception as e:
-        logger.error(f"Error fetching messages: {e}", exc_info=True)
+    except Exception:
+        logger.exception("Error fetching messages")
 
     return messages
 
@@ -158,25 +158,26 @@ async def summarize_with_gemini(
     }
 
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(api_url, headers=headers, json=payload) as response:
-                response.raise_for_status()
-                data = await response.json()
+        async with (
+            aiohttp.ClientSession() as session,
+            session.post(api_url, headers=headers, json=payload) as response,
+        ):
+            response.raise_for_status()
+            data = await response.json()
 
-                try:
-                    response_text = data["candidates"][0]["content"]["parts"][0]["text"]
-                except (KeyError, IndexError):
-                    logger.error(f"Invalid response structure from Gemini: {data}")
-                    return None
+            try:
+                response_text = data["candidates"][0]["content"]["parts"][0]["text"]
+            except (KeyError, IndexError):
+                logger.error(f"Invalid response structure from Gemini: {data}")
+                return None
 
-                # Parse the response
-                return parse_gemini_response(response_text)
+            return parse_gemini_response(response_text)
 
-    except aiohttp.ClientError as e:
-        logger.error(f"Gemini API request failed: {e}", exc_info=True)
+    except aiohttp.ClientError:
+        logger.exception("Gemini API request failed")
         return None
-    except Exception as e:
-        logger.error(f"Unexpected error in Gemini summarization: {e}", exc_info=True)
+    except Exception:
+        logger.exception("Unexpected error in Gemini summarization")
         return None
 
 
@@ -205,8 +206,8 @@ def parse_gemini_response(response_text: str) -> IssueSummary | None:
 
         return IssueSummary(title=title, body=body)
 
-    except Exception as e:
-        logger.error(f"Error parsing Gemini response: {e}", exc_info=True)
+    except Exception:
+        logger.exception("Error parsing Gemini response")
         return None
 
 
@@ -236,27 +237,27 @@ async def create_github_issue(
     last_error = None
     for attempt in range(MAX_RETRIES):
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    api_url, headers=headers, json=payload
-                ) as response:
-                    if response.status == 201:
-                        return await response.json()
+            async with (
+                aiohttp.ClientSession() as session,
+                session.post(api_url, headers=headers, json=payload) as response,
+            ):
+                if response.status == 201:
+                    return await response.json()
 
-                    # Log the error but continue retrying for transient errors
-                    error_text = await response.text()
-                    logger.warning(
-                        f"GitHub API error (attempt {attempt + 1}/{MAX_RETRIES}): "
-                        f"status={response.status}, body={error_text[:200]}"
-                    )
+                # Log the error but continue retrying for transient errors
+                error_text = await response.text()
+                logger.warning(
+                    f"GitHub API error (attempt {attempt + 1}/{MAX_RETRIES}): "
+                    f"status={response.status}, body={error_text[:200]}"
+                )
 
-                    # Don't retry on client errors (4xx) except rate limiting
-                    if response.status == 403 and "rate limit" in error_text.lower():
-                        # Rate limited, wait longer
-                        await asyncio.sleep(RETRY_DELAY_SECONDS * (attempt + 1) * 2)
-                    elif 400 <= response.status < 500 and response.status != 403:
-                        # Client error, don't retry
-                        return None
+                # Don't retry on client errors (4xx) except rate limiting
+                if response.status == 403 and "rate limit" in error_text.lower():
+                    # Rate limited, wait longer
+                    await asyncio.sleep(RETRY_DELAY_SECONDS * (attempt + 1) * 2)
+                elif 400 <= response.status < 500 and response.status != 403:
+                    # Client error, don't retry
+                    return None
 
         except aiohttp.ClientError as e:
             last_error = e
@@ -268,7 +269,7 @@ async def create_github_issue(
         if attempt < MAX_RETRIES - 1:
             await asyncio.sleep(RETRY_DELAY_SECONDS * (attempt + 1))
 
-    logger.error(
+    logger.exception(
         f"Failed to create GitHub issue after {MAX_RETRIES} attempts: {last_error}"
     )
     return None
@@ -328,7 +329,7 @@ async def open_github_issue(
                     messages.append(
                         f"\n[System context: Recent download issues in this chat]\n{formatted_issues}"
                     )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.debug(f"Could not load download issues for issue summary: {exc}")
 
         # Update status
@@ -362,9 +363,9 @@ async def open_github_issue(
             MESSAGES["github_issue_created"].format(url=issue_url)
         )
 
-    except Exception as e:
-        logger.error(f"Unexpected error in open_github_issue: {e}", exc_info=True)
+    except Exception:
+        logger.exception("Unexpected error in open_github_issue")
         try:
             await status_message.edit_text(MESSAGES["error_generic"])
         except Exception:
-            pass
+            logger.debug("Could not edit failed issue status", exc_info=True)

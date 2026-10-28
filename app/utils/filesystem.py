@@ -1,8 +1,9 @@
 from __future__ import annotations
-from contextlib import contextmanager
-from pathlib import Path
+
 import shutil
 import tempfile
+from contextlib import contextmanager
+from pathlib import Path
 
 
 @contextmanager
@@ -26,12 +27,12 @@ def safe_cleanup(path: Path) -> None:
             path.unlink(missing_ok=True)  # type: ignore[arg-type]
         elif path.is_dir():
             shutil.rmtree(path, ignore_errors=True)
-    except Exception:
-        pass
+    except OSError:
+        return
 
 
 def safe_unlink(p: Path):
     try:
         p.unlink(missing_ok=True)  # type: ignore[arg-type]
-    except Exception:
-        pass
+    except OSError:
+        return

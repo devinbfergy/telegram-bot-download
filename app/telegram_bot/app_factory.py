@@ -2,15 +2,17 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from telegram.ext import ApplicationBuilder
+
 from app.config.settings import load_config
 from app.core.logging import get_logger
 from app.telegram_bot.router import register
 from app.utils.database import init_db_sync
-from telegram.ext import ApplicationBuilder
 
 if TYPE_CHECKING:
-    from app.config.settings import AppSettings
     from telegram.ext import Application
+
+    from app.config.settings import AppSettings
 
 log = get_logger(__name__)
 

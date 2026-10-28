@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
 from app.core.logging import get_logger
@@ -16,7 +17,7 @@ class StatusMessenger:
 
     def __init__(
         self,
-        bot,  # noqa: ANN001
+        bot,
         chat_id: int,
         settings: AppSettings,
         message_thread_id: int | None = None,
@@ -26,6 +27,7 @@ class StatusMessenger:
         self.settings = settings
         self.message_thread_id = message_thread_id
         self._message: Message | None = None
+        self._terminal_error = False
 
     async def send_message(self, text: str) -> None:
         """Send a new status message."""
@@ -54,6 +56,11 @@ class StatusMessenger:
         except Exception:  # noqa: BLE001
             log.debug("Failed to edit status message")
 
+    async def show_terminal_error(self, text: str) -> None:
+        """Display an error and retain it instead of treating it as transient progress."""
+        self._terminal_error = True
+        await self.edit_message(text)
+
     async def delete_status_message(self) -> None:
         """Delete the status message if it exists."""
         if self._message is not None:
@@ -67,7 +74,11 @@ class StatusMessenger:
         """Check if there's an active status message."""
         return self._message is not None
 
-    async def send_or_edit(self, context, text: str):  # noqa: ANN001
+    def has_terminal_error(self) -> bool:
+        """Return whether the active status is a terminal failure."""
+        return self._terminal_error
+
+    async def send_or_edit(self, context, text: str):
         """Legacy method for backwards compatibility."""
         await self.edit_message(text)
 
