@@ -27,21 +27,26 @@ class StatusMessenger:
         self.settings = settings
         self.message_thread_id = message_thread_id
         self._message: Message | None = None
+        self._pending_cleanup: list[Message] = []
         self._terminal_error = False
 
-    async def send_message(self, text: str) -> bool:
-        """Send a new status message and report whether it became visible."""
+    async def _send_message(self, text: str) -> Message | None:
+        """Send a status message without changing ownership."""
         try:
-            message = await self.bot.send_message(
+            return await self.bot.send_message(
                 chat_id=self.chat_id,
                 text=text,
                 message_thread_id=self.message_thread_id,
                 disable_notification=True,
             )
         except Exception:  # noqa: BLE001
-            self._message = None
-            self._terminal_error = False
             log.debug("Failed to send status message")
+            return None
+
+    async def send_message(self, text: str) -> bool:
+        """Send a new status message and report whether it became visible."""
+        message = await self._send_message(text)
+        if message is None:
             return False
 
         self._message = message
@@ -53,18 +58,30 @@ class StatusMessenger:
         if self._message is None:
             return await self.send_message(text)
 
+        original = self._message
         try:
             await self.bot.edit_message_text(
                 chat_id=self.chat_id,
-                message_id=self._message.message_id,
+                message_id=original.message_id,
                 text=text,
                 message_thread_id=self.message_thread_id,
             )
         except Exception:  # noqa: BLE001
             log.debug("Failed to edit status message; sending a replacement")
-            self._message = None
+            replacement = await self._send_message(text)
             self._terminal_error = False
-            return await self.send_message(text)
+            if replacement is None:
+                self._message = original
+                return False
+
+            try:
+                await original.delete()
+            except Exception:  # noqa: BLE001
+                self._pending_cleanup.append(original)
+                log.debug("Failed to delete replaced status message")
+
+            self._message = replacement
+            return True
 
         self._terminal_error = False
         return True
@@ -75,7 +92,16 @@ class StatusMessenger:
         self._terminal_error = visible
 
     async def delete_status_message(self) -> None:
-        """Delete the status message if it exists."""
+        """Delete all status messages still owned by this messenger."""
+        pending_cleanup = self._pending_cleanup
+        self._pending_cleanup = []
+        for message in pending_cleanup:
+            try:
+                await message.delete()
+            except Exception:  # noqa: BLE001
+                self._pending_cleanup.append(message)
+                log.debug("Failed to delete replaced status message")
+
         if self._message is not None:
             try:
                 await self._message.delete()

@@ -35,35 +35,49 @@ async def test_terminal_status_is_distinct_from_transient_progress(settings):
 
 
 @pytest.mark.asyncio
-async def test_terminal_status_replaces_stale_message_after_failed_edit(settings):
+async def test_terminal_status_replaces_message_after_transient_edit_failure(settings):
     bot = AsyncMock()
-    stale_message = AsyncMock(message_id=1)
+    original = AsyncMock(message_id=1)
     replacement = AsyncMock(message_id=2)
-    bot.send_message.side_effect = [stale_message, replacement]
-    bot.edit_message_text.side_effect = RuntimeError("message no longer exists")
+    bot.send_message.side_effect = [original, replacement]
+    bot.edit_message_text.side_effect = RuntimeError("transient edit failure")
     status = StatusMessenger(bot, 123, settings)
     await status.send_message("working")
 
     await status.show_terminal_error("failed")
 
+    original.delete.assert_awaited_once()
     assert status._message is replacement
     assert status.has_terminal_error() is True
     assert bot.send_message.await_args_list[-1].kwargs["text"] == "failed"
 
+    await status.delete_status_message()
+
+    replacement.delete.assert_awaited_once()
+    assert status.has_active_message() is False
+    assert status.has_terminal_error() is False
+
 
 @pytest.mark.asyncio
-async def test_failed_terminal_replacement_has_no_stale_ownership(settings):
+async def test_failed_terminal_replacement_retains_original_for_cleanup(settings):
     bot = AsyncMock()
-    stale_message = AsyncMock(message_id=1)
-    bot.send_message.side_effect = [stale_message, RuntimeError("send failed")]
-    bot.edit_message_text.side_effect = RuntimeError("edit failed")
+    original = AsyncMock(message_id=1)
+    bot.send_message.side_effect = [original, RuntimeError("send failed")]
+    bot.edit_message_text.side_effect = RuntimeError("transient edit failure")
     status = StatusMessenger(bot, 123, settings)
     await status.send_message("working")
 
     await status.show_terminal_error("failed")
 
-    assert status.has_active_message() is False
+    original.delete.assert_not_awaited()
+    assert status._message is original
+    assert status.has_active_message() is True
     assert status.has_terminal_error() is False
+
+    await status.delete_status_message()
+
+    original.delete.assert_awaited_once()
+    assert status.has_active_message() is False
 
 
 @pytest.mark.asyncio
